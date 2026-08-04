@@ -1,0 +1,39 @@
+{
+  "name": "signal-arena",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "keys:generate": "node scripts/generate-solana-key.mjs",
+    "keys:evm": "node scripts/generate-evm-key.mjs",
+    "keys:solana": "node scripts/generate-solana-key.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@scure/base": "^2.2.0",
+    "@solana/kit": "^5.5.1",
+    "@x402/evm": "^2.20.0",
+    "@x402/fetch": "^2.20.0",
+    "@x402/svm": "^2.20.0",
+    "framer-motion": "^12.43.0",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "viem": "^2.55.10",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@9.9.0"
+}
