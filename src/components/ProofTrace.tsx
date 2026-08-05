@@ -8,7 +8,10 @@ import { txUrl } from "@/lib/explorer";
 const ROLE_LABELS: Record<string, string> = {
   news: "Evidence",
   authenticity: "Authenticity",
-  reason: "Judgment",
+  reason: "Judge A",
+  // Judge B carries the "consensus" role; without this it fell through to
+  // the generic "Stage" label on every receipt.
+  consensus: "Judge B",
 };
 
 function roleOf(proof: PaymentProof) {

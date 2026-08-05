@@ -91,6 +91,12 @@ export function loadConfig() {
     cronAutoMarketsPerCycle:
       Number(process.env.CRON_AUTO_MARKETS_PER_CYCLE ?? 1) || 1,
     cronDailyCapUsdc: Number(process.env.CRON_DAILY_CAP_USDC ?? 5) || 5,
+    /**
+     * Stop opening new markets once the board is larger than the reader can
+     * work through. Otherwise auto-markets accumulate faster than readings
+     * clear them and every market goes stale.
+     */
+    cronMaxOpenMarkets: Number(process.env.CRON_MAX_OPEN_MARKETS ?? 12) || 12,
 
     /** Spend ceiling for the public verify endpoint, per rolling 24h. */
     verifyDailyCapUsdc:

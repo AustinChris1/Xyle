@@ -572,18 +572,28 @@ export async function runCronCycle() {
     };
   }
 
-  const autoMarkets = cfg.cronAutoMarkets
-    ? await generateMarketsFromNews(cfg.cronAutoMarketsPerCycle).catch((err) => {
-        console.warn("[cron] auto markets failed:", err);
-        return [] as Market[];
-      })
-    : [];
+  // Opening a market every cycle while only reading a couple of them means
+  // the board grows faster than it can be judged, and every market ends up
+  // stale. Stop creating once the backlog is more than the reader can clear.
+  const openNow = (await db.openMarketIds()).length;
+  const backlogFull = openNow >= cfg.cronMaxOpenMarkets;
+
+  const autoMarkets =
+    cfg.cronAutoMarkets && !backlogFull
+      ? await generateMarketsFromNews(cfg.cronAutoMarketsPerCycle).catch(
+          (err) => {
+            console.warn("[cron] auto markets failed:", err);
+            return [] as Market[];
+          }
+        )
+      : [];
 
   const oracle = await runAllOpenOracles(cfg.cronMarketsPerCycle);
   await db.setLastCronAt(new Date().toISOString());
 
   return {
     autoMarkets: autoMarkets.map((m) => m.id),
+    autoMarketsPaused: backlogFull,
     oracle,
     spentUsdcLast24h: await db.spendSince(24 * 60 * 60 * 1000),
     capUsdc: cfg.cronDailyCapUsdc,
