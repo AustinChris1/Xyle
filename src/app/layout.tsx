@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
+import { Aurora } from "@/components/Aurora";
 import { Nav } from "@/components/Nav";
 import { LiveRibbon } from "@/components/LiveRibbon";
 import { PageShell } from "@/components/PageShell";
+import { WalletProviders } from "@/components/WalletProviders";
 import "./globals.css";
 
 const display = Instrument_Sans({
@@ -36,8 +38,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f2e9" },
-    { media: "(prefers-color-scheme: dark)", color: "#0c0b09" },
+    { media: "(prefers-color-scheme: light)", color: "#f5f4f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#08070d" },
   ],
 };
 
@@ -55,27 +57,30 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="flex min-h-full flex-col font-sans">
-        <Nav />
-        <LiveRibbon />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:py-12">
-          <PageShell>{children}</PageShell>
-        </main>
-        <footer className="border-t border-line">
-          <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-center font-mono text-[11px] text-muted sm:flex-row sm:text-left">
-            <span>Signal Arena</span>
-            <span>
-              Settled by live Telegraph miners, paid per call with x402
-            </span>
-            <a
-              href="https://hackathon.telegraphprotocol.com"
-              className="text-copper transition-colors hover:text-copper-hot"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Telegraph Hackathon
-            </a>
-          </div>
-        </footer>
+        <Aurora />
+        <WalletProviders>
+          <Nav />
+          <LiveRibbon />
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:py-12">
+            <PageShell>{children}</PageShell>
+          </main>
+          <footer className="border-t border-line">
+            <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-center font-mono text-[11px] text-muted sm:flex-row sm:text-left">
+              <span>Signal Arena</span>
+              <span>
+                Settled by live Telegraph miners, paid per call with x402
+              </span>
+              <a
+                href="https://hackathon.telegraphprotocol.com"
+                className="text-copper transition-colors hover:text-copper-hot"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Telegraph Hackathon
+              </a>
+            </div>
+          </footer>
+        </WalletProviders>
       </body>
     </html>
   );

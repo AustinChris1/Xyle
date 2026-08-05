@@ -49,12 +49,12 @@ export function MarketCard({
 
         <div className="mt-auto pt-5">
           <div className="mb-1.5 flex justify-between font-mono text-[11px]">
-            <span className="text-yes">YES {market.potYes.toFixed(2)}</span>
-            <span className="text-no">NO {market.potNo.toFixed(2)}</span>
+            <span className="text-yes">YES {market.potYes}</span>
+            <span className="text-no">NO {market.potNo}</span>
           </div>
           <div className="meter">
             <motion.div
-              className="h-full rounded-full bg-linear-to-r from-yes to-copper"
+              className="h-full rounded-full bg-yes"
               initial={{ width: 0 }}
               animate={{ width: `${yesPct}%` }}
               transition={{ duration: 0.7, ease, delay: 0.15 + index * 0.05 }}
@@ -63,7 +63,7 @@ export function MarketCard({
 
           <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-wide text-faint">
             <span>
-              {stakes} {stakes === 1 ? "position" : "positions"}
+              {stakes} {stakes === 1 ? "forecast" : "forecasts"}
             </span>
             <span aria-hidden="true">/</span>
             <span>{market.eventClass.replace(/_/g, " ")}</span>

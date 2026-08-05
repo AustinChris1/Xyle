@@ -7,6 +7,7 @@ import { ease } from "@/lib/motion";
 const STAGES = [
   {
     step: "01",
+    tint: "var(--evidence)",
     name: "Evidence",
     source: "News miner",
     detail:
@@ -14,6 +15,7 @@ const STAGES = [
   },
   {
     step: "02",
+    tint: "var(--authenticity)",
     name: "Authenticity",
     source: "Detector miner",
     detail:
@@ -21,10 +23,11 @@ const STAGES = [
   },
   {
     step: "03",
+    tint: "var(--judgment)",
     name: "Judgment",
-    source: "Reasoning miner",
+    source: "Two reasoning miners",
     detail:
-      "Weighs what survived and returns a verdict with a confidence number. Below the market's bar, nothing happens and the market stays open.",
+      "Two independent judges weigh what survived. They must agree, and clear the market's confidence bar, or nothing happens and the market stays open.",
   },
 ];
 
@@ -45,7 +48,7 @@ export function ScrollPipeline() {
       {/* spine */}
       <div className="absolute top-2 bottom-2 left-3.75 w-px bg-line md:left-4.75" />
       <motion.div
-        className="absolute top-2 bottom-2 left-3.75 w-px origin-top bg-linear-to-b from-copper-hot to-signal md:left-4.75"
+        className="absolute top-2 bottom-2 left-3.75 w-px origin-top bg-copper md:left-4.75"
         style={{ scaleY: fill }}
       />
 
@@ -83,28 +86,44 @@ function Stage({
       transition={{ duration: 0.5, ease, delay: index * 0.05 }}
       className="relative grid grid-cols-[32px_1fr] gap-4 md:grid-cols-[40px_1fr] md:gap-6"
     >
-      <div className="relative flex justify-center pt-1.5">
+      <div className="relative flex justify-center pt-4">
         <motion.span
           style={{ scale: swell }}
           className="relative z-10 flex h-2.5 w-2.5 rounded-full ring-4 ring-background"
         >
           <span className="absolute inset-0 rounded-full bg-(--line-strong)" />
           <motion.span
-            style={{ opacity: glow }}
-            className="absolute inset-0 rounded-full bg-copper-hot"
+            style={{ opacity: glow, background: stage.tint }}
+            className="absolute inset-0 rounded-full"
+          />
+          <motion.span
+            style={{ opacity: glow, background: stage.tint }}
+            className="absolute -inset-2 rounded-full blur-md"
           />
         </motion.span>
       </div>
 
-      <motion.div style={{ opacity: lit }}>
+      <motion.div
+        style={{ opacity: lit, ["--tint" as string]: stage.tint }}
+        className="tinted rounded-2xl p-5 sm:p-6"
+      >
         <div className="flex flex-wrap items-baseline gap-3">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-copper">
+          <span
+            className="font-mono text-[10px] tracking-[0.2em]"
+            style={{ color: stage.tint }}
+          >
             {stage.step}
           </span>
           <h3 className="text-xl font-semibold tracking-tight text-ink">
             {stage.name}
           </h3>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
+          <span
+            className="rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider"
+            style={{
+              color: stage.tint,
+              background: `color-mix(in srgb, ${stage.tint} 14%, transparent)`,
+            }}
+          >
             {stage.source}
           </span>
         </div>

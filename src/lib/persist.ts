@@ -7,6 +7,7 @@ import type {
   Market,
   OracleTick,
   Stake,
+  UserProfile,
 } from "./types";
 
 export interface PersistedStore {
@@ -16,6 +17,8 @@ export interface PersistedStore {
   challenges: ChallengeAttempt[];
   consumption: ConsumptionEntry[];
   activity: ActivityItem[];
+  /** SIWE profiles keyed by lowercase address. */
+  users: Record<string, UserProfile>;
   minerRequests: number;
   totalCostUsdc: number;
   lastCronAt?: string;
@@ -31,6 +34,7 @@ const EMPTY: PersistedStore = {
   challenges: [],
   consumption: [],
   activity: [],
+  users: {},
   minerRequests: 0,
   totalCostUsdc: 0,
   seeded: false,
@@ -73,13 +77,15 @@ export async function loadPersisted(): Promise<PersistedStore> {
       });
       const row = rs.rows[0];
       if (row && typeof row.value === "string") {
-        return { ...EMPTY, ...JSON.parse(row.value) };
+        const parsed = JSON.parse(row.value) as Partial<PersistedStore>;
+        return { ...EMPTY, ...parsed, users: parsed.users || {} };
       }
       return { ...EMPTY };
     }
 
     const raw = await fs.readFile(localPath(), "utf8");
-    return { ...EMPTY, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw) as Partial<PersistedStore>;
+    return { ...EMPTY, ...parsed, users: parsed.users || {} };
   } catch {
     return { ...EMPTY };
   }
@@ -120,6 +126,7 @@ export function emptyStore(): PersistedStore {
     challenges: [],
     consumption: [],
     activity: [],
+    users: {},
   };
 }
 

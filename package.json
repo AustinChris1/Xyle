@@ -15,14 +15,18 @@
     "@libsql/client": "^0.17.4",
     "@scure/base": "^2.2.0",
     "@solana/kit": "^5.5.1",
+    "@tanstack/react-query": "^5.101.4",
     "@x402/evm": "^2.20.0",
     "@x402/fetch": "^2.20.0",
     "@x402/svm": "^2.20.0",
     "framer-motion": "^12.43.0",
+    "iron-session": "8",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "siwe": "^3.0.0",
     "viem": "^2.55.10",
+    "wagmi": "2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

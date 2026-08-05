@@ -4,6 +4,7 @@ import { Hero } from "@/components/landing/Hero";
 import { SettlementDemo } from "@/components/landing/SettlementDemo";
 import { ScrollPipeline } from "@/components/landing/ScrollPipeline";
 import { AdversaryTeaser } from "@/components/landing/AdversaryTeaser";
+import { MinerConstellation } from "@/components/landing/MinerConstellation";
 import { Reveal } from "@/components/Reveal";
 import { SignalMark } from "@/components/brand/SignalMark";
 import { StatusPill } from "@/components/StatusPill";
@@ -13,14 +14,17 @@ export const dynamic = "force-dynamic";
 
 const claims = [
   {
+    tint: "var(--evidence)",
     title: "Infrastructure, not just a demo",
     body: "POST /api/oracle/verify is a public endpoint. Other apps can buy a four-miner verdict with receipts.",
   },
   {
+    tint: "var(--authenticity)",
     title: "Four different miners",
-    body: "News (Tavily 202), authenticity (Gemini 109), judge A (OpenRouter 110), judge B (LiteLLM 104). YES needs dual consensus.",
+    body: "Evidence (Tavily 202), authenticity (DeepSeek 115), judge A (OpenRouter 110), judge B (LiteLLM 104). YES needs dual consensus.",
   },
   {
+    tint: "var(--judgment)",
     title: "Demand is public",
     body: "The consumption ledger is a scoreboard Track 1 miners can link to: every call, cost, latency, receipt.",
   },
@@ -42,8 +46,7 @@ export default async function HomePage() {
         <Reveal className="mb-6">
           <p className="eyebrow">Watch one resolve</p>
           <h2 className="mt-2.5 max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">
-            A claim goes in. Three stages disagree with it. The pot pays the
-            skeptics.
+            A claim goes in. Four miners weigh it. The pot pays the skeptics.
           </h2>
         </Reveal>
         <Reveal delay={0.08}>
@@ -55,24 +58,55 @@ export default async function HomePage() {
         <Reveal className="mb-10">
           <p className="eyebrow">How settlement works</p>
           <h2 className="mt-2.5 max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">
-            One reading, three independent stages
+            One reading, four independent miners
           </h2>
           <p className="mt-3 max-w-2xl leading-relaxed text-muted">
-            A verdict only lands when all three agree the evidence is real. Any
-            stage can hold the market open on its own.
+            A verdict only lands when both judges agree and the evidence
+            survives the authenticity check. Any stage can hold the market open
+            on its own.
           </p>
         </Reveal>
         <ScrollPipeline />
       </section>
 
+      <section className="mt-16 sm:mt-24">
+        <Reveal>
+          <div className="glass rounded-2xl px-5 py-8 sm:px-10 sm:py-10">
+            <p className="eyebrow">The stack</p>
+            <h2 className="mt-2.5 max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">
+              Four miners argue. One verdict comes out, with receipts.
+            </h2>
+            {/* The diagram's labels stop being legible below ~560px, so on
+                small screens it scrolls sideways instead of shrinking. */}
+            <div className="mt-8 -mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0">
+              <div className="min-w-140">
+                <MinerConstellation />
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
       <section className="mt-16 grid gap-4 sm:mt-24 sm:grid-cols-3">
         {claims.map((c, i) => (
           <Reveal key={c.title} delay={i * 0.08}>
-            <div className="panel h-full rounded-xl p-6">
-              <h3 className="font-semibold tracking-tight text-ink">
+            <div
+              className="tinted h-full rounded-2xl p-6"
+              style={{ ["--tint" as string]: c.tint }}
+            >
+              <span
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg font-mono text-[11px] font-semibold"
+                style={{
+                  color: c.tint,
+                  background: `color-mix(in srgb, ${c.tint} 16%, transparent)`,
+                }}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <h3 className="mt-3.5 font-semibold tracking-tight text-ink">
                 {c.title}
               </h3>
-              <p className="mt-2.5 text-sm leading-relaxed text-muted">
+              <p className="mt-2 text-sm leading-relaxed text-muted">
                 {c.body}
               </p>
             </div>
@@ -155,7 +189,6 @@ export default async function HomePage() {
       <section className="mt-16 sm:mt-24">
         <Reveal>
           <div className="panel relative overflow-hidden rounded-2xl px-6 py-14 text-center sm:px-10">
-            <div className="pointer-events-none absolute left-1/2 top-0 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full bg-signal/10 blur-3xl" />
             <div className="relative flex flex-col items-center">
               <span className="text-copper">
                 <SignalMark size={52} idle />

@@ -5,6 +5,8 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { ChallengeAttempt } from "@/lib/types";
 import { ease, fadeUp, listItem, stagger } from "@/lib/motion";
 import { ProofTrace } from "./ProofTrace";
+import { useAuth } from "@/hooks/useAuth";
+import { openShare, shareBreak } from "@/lib/share";
 
 const SAMPLE = `BREAKING: Multiple independent security firms have confirmed a critical exploit affecting a major DeFi lending protocol. Over $40M in user funds are reportedly at risk as the attacker drained the ethereum vault within minutes. On-chain analysts traced the flow to a mixer. Protocol team has not yet issued an official statement.`;
 
@@ -18,8 +20,10 @@ export function ChallengeClient({
   network: string;
 }) {
   const reduce = useReducedMotion();
+  const { user } = useAuth();
   const [player, setPlayer] = useState("adversary");
   const [text, setText] = useState(SAMPLE);
+  const effectivePlayer = user?.handle || player;
   const [attempts, setAttempts] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +53,7 @@ export function ChallengeClient({
       const res = await fetch("/api/challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player, text }),
+        body: JSON.stringify({ player: effectivePlayer, text }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(formatApiError(data));
@@ -63,7 +67,11 @@ export function ChallengeClient({
   }
 
   function shareText(a: ChallengeAttempt) {
-    return `I scored ${(a.foolScore * 100).toFixed(1)} trying to fool Signal Arena's evidence oracle. Verdict ${a.verdict} at ${(a.confidence * 100).toFixed(0)}%. Beat that. #SignalArena`;
+    return shareBreak({
+      handle: effectivePlayer,
+      attempt: a,
+      appUrl: process.env.NEXT_PUBLIC_APP_URL || window.location.origin,
+    });
   }
 
   return (
@@ -85,10 +93,11 @@ export function ChallengeClient({
         </p>
 
         <label className="mt-6 block text-xs text-muted">
-          Handle
+          Handle {user ? "(from wallet)" : ""}
           <input
-            value={player}
+            value={effectivePlayer}
             onChange={(e) => setPlayer(e.target.value)}
+            disabled={Boolean(user)}
             className="input-desk mt-1"
             placeholder="your handle"
           />
@@ -185,7 +194,7 @@ export function ChallengeClient({
 
               <div className="meter mt-3">
                 <motion.div
-                  className="h-full bg-linear-to-r from-copper to-signal"
+                  className="h-full bg-copper"
                   initial={{ width: 0 }}
                   animate={{ width: `${last.foolScore * 100}%` }}
                   transition={{ duration: 0.8, ease }}
@@ -216,13 +225,9 @@ export function ChallengeClient({
                   try {
                     await navigator.clipboard.writeText(t);
                   } catch {
-                    // clipboard unavailable, the share window still opens
+                    // clipboard unavailable
                   }
-                  window.open(
-                    `https://x.com/intent/tweet?text=${encodeURIComponent(t)}`,
-                    "_blank",
-                    "noopener,noreferrer"
-                  );
+                  openShare(t);
                 }}
               >
                 Share this score

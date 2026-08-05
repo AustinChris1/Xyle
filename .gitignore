@@ -43,3 +43,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# private working docs (demo run-sheets, scratch notes, pitch drafts)
+*.private.md
+/notes/
+/private/
+DEMO.md
+NOTES.md
+TODO.md
+CLAUDE.md
+AGENTS.md

@@ -27,12 +27,9 @@ export function Hero() {
   return (
     <section
       ref={ref}
-      className="panel relative overflow-hidden rounded-2xl px-6 py-14 sm:px-10 sm:py-20"
+      className="panel relative overflow-hidden rounded-2xl px-5 py-10 sm:px-10 sm:py-16 lg:py-20"
     >
-      <div className="pointer-events-none absolute -right-32 -top-24 h-80 w-80 rounded-full bg-signal/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 -left-24 h-72 w-72 rounded-full bg-copper/10 blur-3xl" />
-
-      <div className="relative grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
+      <div className="relative grid items-center gap-10 sm:gap-12 lg:grid-cols-[1.15fr_0.85fr]">
         <motion.div style={{ y: copyY }}>
           <motion.p
             initial={{ opacity: 0, y: 8 }}
@@ -43,7 +40,7 @@ export function Hero() {
             Evidence-settled prediction markets
           </motion.p>
 
-          <h1 className="mt-5 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
+          <h1 className="mt-4 text-[2rem] font-semibold leading-[1.08] tracking-tight sm:mt-5 sm:text-5xl lg:text-6xl">
             {HEADLINE.map((line, li) => (
               <span key={li} className="block overflow-hidden">
                 <motion.span
@@ -73,7 +70,7 @@ export function Hero() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.42, ease }}
-            className="mt-6 max-w-xl text-base leading-relaxed text-muted sm:text-lg"
+            className="mt-5 max-w-xl leading-relaxed text-muted sm:mt-6 sm:text-lg"
           >
             Take a side on a claim. When the oracle runs, it gathers live
             coverage, scores it for authenticity, and reasons over what
@@ -84,12 +81,12 @@ export function Hero() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.52, ease }}
-            className="mt-9 flex flex-wrap gap-3"
+            className="mt-7 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap"
           >
-            <Link href="/markets" className="btn-primary text-sm">
+            <Link href="/markets" className="btn-primary justify-center text-sm">
               Browse open markets
             </Link>
-            <Link href="/challenge" className="btn-ghost text-sm">
+            <Link href="/challenge" className="btn-ghost justify-center text-sm">
               Try to fool the oracle
             </Link>
           </motion.div>
@@ -98,17 +95,17 @@ export function Hero() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.72 }}
-            className="mt-10 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint"
+            className="mt-8 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint sm:mt-10 sm:gap-x-6"
           >
             <li>No moderator</li>
-            <li>Three independent stages</li>
+            <li>Four independent miners</li>
             <li>Every verdict receipted</li>
           </motion.ul>
         </motion.div>
 
         <motion.div
           style={{ y: markY, opacity: markFade }}
-          className="relative mx-auto hidden aspect-square w-full max-w-[340px] items-center justify-center lg:flex"
+          className="relative mx-auto flex aspect-square w-full max-w-[190px] items-center justify-center sm:max-w-[240px] lg:max-w-[320px]"
         >
           {/* orbit rings */}
           {[0, 1].map((i) => (
@@ -134,7 +131,15 @@ export function Hero() {
             transition={{ duration: 0.9, delay: 0.2, ease }}
             className="relative text-copper"
           >
-            <SignalMark size={220} animated idle gradient />
+            {/* CSS wins over the SVG width/height attributes, so the mark
+                tracks its container instead of needing a resize listener. */}
+            <SignalMark
+              size={220}
+              animated
+              idle
+              gradient
+              className="h-[120px] w-[120px] sm:h-[152px] sm:w-[152px] lg:h-[200px] lg:w-[200px]"
+            />
           </motion.div>
         </motion.div>
       </div>

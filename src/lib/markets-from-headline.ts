@@ -7,7 +7,8 @@ import type { Market } from "./types";
 /** Paste a headline → open a market (user path). */
 export async function createMarketFromHeadline(
   headline: string,
-  player?: string
+  player?: string,
+  createdBy?: string
 ): Promise<Market> {
   const cfg = loadConfig();
   const h = headline.trim().slice(0, 400);
@@ -51,5 +52,7 @@ Title must be a clear yes/no question.`,
     closesInHours: 48,
     source: "user",
     sourceHeadline: h,
+    createdBy,
+    createdByHandle: player,
   });
 }

@@ -1,13 +1,30 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Market, OracleTick, Stake } from "@/lib/types";
 import { ease, fadeUp, listItem, scaleIn, stagger } from "@/lib/motion";
 import { StatusPill } from "./StatusPill";
+import { ActionButton } from "@/components/ActionButton";
+import { useToast } from "@/components/Toast";
+import { BoltIcon } from "@/components/Icon";
 import { ProofTrace } from "./ProofTrace";
 import { CountUp } from "./CountUp";
 import { NextReading } from "./NextReading";
+import { WatchButton } from "./WatchButton";
+import { useAuth } from "@/hooks/useAuth";
+import { openShare, shareMarketSettled } from "@/lib/share";
+
+/** Stale evidence is the main way a verdict goes wrong, so surface the age. */
+function relativeAge(iso: string) {
+  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
+  if (!Number.isFinite(days)) return "";
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
 
 const VERDICT_TONE: Record<string, string> = {
   yes: "text-yes",
@@ -30,16 +47,23 @@ export function MarketDetailClient({
   lastCronAt?: string | null;
   intervalMinutes?: number;
 }) {
-  const reduce = useReducedMotion();
+  const { user } = useAuth();
+  const toast = useToast();
   const [market, setMarket] = useState(initialMarket);
   const [stakes, setStakes] = useState(initialStakes);
   const [ticks, setTicks] = useState(initialTicks);
-  const [player, setPlayer] = useState("desk-01");
-  const [side, setSide] = useState<"yes" | "no">("yes");
-  const [amount, setAmount] = useState(5);
   const [busy, setBusy] = useState<"stake" | "oracle" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
+
+  // The signed-in wallet's existing call, so the buttons show current state.
+  const [myForecast, setMyForecast] = useState<"yes" | "no" | null>(
+    () =>
+      initialStakes.find(
+        (f) => f.address && user?.address &&
+          f.address.toLowerCase() === user.address.toLowerCase()
+      )?.side ?? null
+  );
 
   const pushLog = useCallback((line: string) => {
     setLog((prev) =>
@@ -47,26 +71,47 @@ export function MarketDetailClient({
     );
   }, []);
 
-  const placeStake = useCallback(async () => {
-    setBusy("stake");
-    setError(null);
-    try {
-      const res = await fetch(`/api/markets/${market.id}/stake`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player, side, amount }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not place that position");
-      setMarket(data.market);
-      setStakes((s) => [...s, data.stake]);
-      pushLog(`position ${side.toUpperCase()} ${amount} for ${player}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not place that position");
-    } finally {
-      setBusy(null);
-    }
-  }, [market.id, player, side, amount, pushLog]);
+  const placeForecast = useCallback(
+    async (choice: "yes" | "no") => {
+      if (!user) {
+        toast.warn("Connect a wallet and sign in to record a forecast.");
+        return;
+      }
+      setBusy("stake");
+      setError(null);
+      try {
+        const res = await fetch(`/api/markets/${market.id}/forecast`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ side: choice }),
+        });
+        const data = await res.json();
+        if (!res.ok)
+          throw new Error(
+            data.detail ?? data.error ?? "Could not record that forecast"
+          );
+
+        setMarket(data.market);
+        setStakes((prev) => {
+          const others = prev.filter(
+            (f) => f.address?.toLowerCase() !== user.address.toLowerCase()
+          );
+          return [...others, data.forecast];
+        });
+        setMyForecast(choice);
+        pushLog(`forecast ${choice.toUpperCase()} by ${user.handle}`);
+        toast.success(`Your call: ${choice.toUpperCase()}`);
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not record that forecast";
+        setError(msg);
+        toast.error(msg);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [market.id, user, pushLog, toast]
+  );
 
   const runOracle = useCallback(async () => {
     setBusy("oracle");
@@ -94,14 +139,30 @@ export function MarketDetailClient({
           } ${p.latencyMs}ms${p.txHash ? ` ${p.txHash.slice(0, 12)}` : ""}`
         );
       }
+
+      const degraded = tick.stages?.degraded ?? [];
+      if (tick.settled) {
+        toast.success(
+          `Settled ${tick.verdict.toUpperCase()} at ${(tick.confidence * 100).toFixed(0)}% confidence`
+        );
+      } else if (degraded.length > 0) {
+        toast.warn(
+          `Reading done on ${tick.stages?.completed} of ${tick.stages?.total} stages. Unavailable: ${degraded.join(", ")}.`
+        );
+      } else {
+        toast.info(
+          `Reading done: ${tick.verdict} at ${(tick.confidence * 100).toFixed(0)}%. Market stays open.`
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "The reading failed";
       setError(msg);
       pushLog(`error: ${msg}`);
+      toast.error(msg);
     } finally {
       setBusy(null);
     }
-  }, [market.id, pushLog]);
+  }, [market.id, pushLog, toast]);
 
   const total = market.potYes + market.potNo;
   const latest = ticks[0];
@@ -122,9 +183,12 @@ export function MarketDetailClient({
             <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
               {market.eventClass.replace(/_/g, " ")}
             </span>
-            <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-faint">
-              {settled ? "Closed" : "Closes"}{" "}
-              {new Date(market.closesAt).toLocaleDateString()}
+            <span className="ml-auto flex items-center gap-2">
+              <WatchButton marketId={market.id} />
+              <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
+                {settled ? "Closed" : "Closes"}{" "}
+                {new Date(market.closesAt).toLocaleDateString()}
+              </span>
             </span>
           </div>
 
@@ -135,8 +199,8 @@ export function MarketDetailClient({
 
           <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
-              { k: "YES conviction", v: market.potYes, d: 2, c: "text-yes" },
-              { k: "NO conviction", v: market.potNo, d: 2, c: "text-no" },
+              { k: "Say YES", v: market.potYes, d: 0, c: "text-yes" },
+              { k: "Say NO", v: market.potNo, d: 0, c: "text-no" },
               {
                 k: "Confidence bar",
                 v: market.confidenceThreshold * 100,
@@ -144,7 +208,7 @@ export function MarketDetailClient({
                 c: "text-copper-hot",
                 suffix: "%",
               },
-              { k: "Total conviction", v: total, d: 2, c: "text-ink" },
+              { k: "Forecasters", v: total, d: 0, c: "text-ink" },
             ].map((cell) => (
               <div key={cell.k} className="sunken rounded-lg p-3">
                 <div className="font-mono text-[10px] uppercase tracking-wide text-faint">
@@ -161,14 +225,14 @@ export function MarketDetailClient({
           <div className="mt-5">
             <div className="meter">
               <motion.div
-                className="h-full bg-linear-to-r from-yes to-copper"
+                className="h-full bg-yes"
                 animate={{ width: `${yesPct}%` }}
                 transition={{ type: "spring", stiffness: 120, damping: 20 }}
               />
             </div>
             <div className="mt-1.5 flex justify-between font-mono text-[10px] uppercase tracking-wide text-faint">
-              <span>{yesPct.toFixed(0)}% backing yes</span>
-              <span>{(100 - yesPct).toFixed(0)}% backing no</span>
+              <span>{yesPct.toFixed(0)}% say yes</span>
+              <span>{(100 - yesPct).toFixed(0)}% say no</span>
             </div>
           </div>
         </motion.section>
@@ -176,7 +240,7 @@ export function MarketDetailClient({
         {market.status === "open" ? (
           <motion.section variants={fadeUp} className="panel-hot rounded-xl p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <h2 className="eyebrow">Mark conviction</h2>
+              <h2 className="eyebrow">Your forecast</h2>
               <NextReading
                 lastOracleAt={market.lastOracleAt || latest?.at}
                 lastCronAt={lastCronAt}
@@ -184,74 +248,63 @@ export function MarketDetailClient({
               />
             </div>
             <p className="mt-2 text-xs text-muted">
-              Demo units, not bank money. Real USDC is spent on miner readings
-              (see Ledger).
+              {user
+                ? "One call per wallet. You can change it while the market is open, and your accuracy is what scores on the leaderboard."
+                : "Connect a wallet to record your call. One per wallet, and you can change it while the market is open."}
             </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-4">
-              <label className="text-xs text-muted sm:col-span-2">
-                Handle
-                <input
-                  value={player}
-                  onChange={(e) => setPlayer(e.target.value)}
-                  className="input-desk mt-1"
-                  placeholder="your handle"
-                />
-              </label>
-              <label className="text-xs text-muted">
-                Side
-                <select
-                  value={side}
-                  onChange={(e) => setSide(e.target.value as "yes" | "no")}
-                  className="input-desk mt-1"
-                >
-                  <option value="yes">YES</option>
-                  <option value="no">NO</option>
-                </select>
-              </label>
-              <label className="text-xs text-muted">
-                Size
-                <input
-                  type="number"
-                  min={0.5}
-                  max={100}
-                  step={0.5}
-                  value={amount}
-                  onChange={(e) => setAmount(Number(e.target.value))}
-                  className="input-desk mt-1"
-                />
-              </label>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {(["yes", "no"] as const).map((option) => {
+                const picked = myForecast === option;
+                const tone =
+                  option === "yes"
+                    ? "border-yes/50 bg-yes/15 text-yes"
+                    : "border-no/50 bg-no/15 text-no";
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={busy !== null || !user}
+                    aria-pressed={picked}
+                    onClick={() => void placeForecast(option)}
+                    className={`flex flex-col items-center gap-1 rounded-xl border px-4 py-4 transition-colors disabled:opacity-50 ${
+                      picked
+                        ? tone
+                        : "border-line text-muted hover:border-copper/40 hover:text-ink"
+                    }`}
+                  >
+                    <span className="font-mono text-lg font-semibold">
+                      {option.toUpperCase()}
+                    </span>
+                    <span className="text-[11px]">
+                      {option === "yes"
+                        ? "It will happen"
+                        : "It will not happen"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-3">
-              <motion.button
-                type="button"
-                disabled={busy !== null}
-                onClick={placeStake}
-                whileTap={reduce ? undefined : { scale: 0.97 }}
-                className="btn-primary text-sm"
-              >
-                {busy === "stake" ? "Recording" : "Record conviction"}
-              </motion.button>
-              <motion.button
-                type="button"
+            {myForecast && (
+              <p className="mt-3 font-mono text-[11px] text-copper">
+                Your call: {myForecast.toUpperCase()}. Tap the other option to
+                change it.
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <ActionButton
+                variant="ghost"
+                pending={busy === "oracle"}
+                pendingLabel="Reading the evidence"
                 disabled={busy !== null}
                 onClick={runOracle}
-                whileTap={reduce ? undefined : { scale: 0.97 }}
-                className="btn-ghost text-sm font-semibold text-copper-hot"
+                className="w-full text-sm font-semibold text-copper-hot sm:w-auto"
               >
-                {busy === "oracle" ? (
-                  <>
-                    <motion.span
-                      className="inline-block h-2 w-2 rounded-full bg-copper"
-                      animate={{ opacity: [1, 0.25, 1], scale: [1, 0.8, 1] }}
-                      transition={{ repeat: Infinity, duration: 0.9 }}
-                    />
-                    Reading the evidence
-                  </>
-                ) : (
-                  "Run the oracle"
-                )}
-              </motion.button>
+                <BoltIcon size={14} />
+                Run the oracle
+              </ActionButton>
             </div>
 
             <AnimatePresence>
@@ -321,8 +374,8 @@ export function MarketDetailClient({
                 <motion.div
                   className={`h-full ${
                     latest.confidence >= market.confidenceThreshold
-                      ? "bg-linear-to-r from-copper to-signal"
-                      : "bg-linear-to-r from-muted to-copper"
+                      ? "bg-copper"
+                      : "bg-muted"
                   }`}
                   initial={{ width: 0 }}
                   animate={{ width: `${latest.confidence * 100}%` }}
@@ -354,6 +407,31 @@ export function MarketDetailClient({
                 </p>
               )}
 
+              {latest.settled && (
+                <button
+                  type="button"
+                  className="btn-ghost mt-4 text-xs text-copper"
+                  onClick={async () => {
+                    const text = shareMarketSettled({
+                      handle: user?.handle ?? "anon",
+                      market,
+                      tick: latest,
+                      appUrl:
+                        process.env.NEXT_PUBLIC_APP_URL ||
+                        window.location.origin,
+                    });
+                    try {
+                      await navigator.clipboard.writeText(text);
+                    } catch {
+                      /* ignore */
+                    }
+                    openShare(text);
+                  }}
+                >
+                  Share settle card
+                </button>
+              )}
+
               {latest.sources.length > 0 && (
                 <div className="mt-5">
                   <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
@@ -382,6 +460,13 @@ export function MarketDetailClient({
                           </a>
                         ) : (
                           <div className="font-medium text-ink">{s.title}</div>
+                        )}
+                        {s.publishedAt && (
+                          <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-faint">
+                            {new Date(s.publishedAt).toLocaleDateString()}
+                            {" · "}
+                            {relativeAge(s.publishedAt)}
+                          </div>
                         )}
                         <div className="mt-0.5 text-muted">{s.snippet}</div>
                       </motion.li>
@@ -429,11 +514,11 @@ export function MarketDetailClient({
 
         <motion.div variants={fadeUp} className="panel rounded-xl p-4">
           <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
-            Positions
+            Forecasts
           </h3>
           <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto text-sm">
             {stakes.length === 0 && (
-              <li className="text-muted">Nobody has taken a side yet.</li>
+              <li className="text-muted">No forecasts yet.</li>
             )}
             <AnimatePresence initial={false}>
               {[...stakes].reverse().map((s) => (
@@ -445,7 +530,7 @@ export function MarketDetailClient({
                 >
                   <span className="text-ink">{s.player}</span>
                   <span className={s.side === "yes" ? "text-yes" : "text-no"}>
-                    {s.side.toUpperCase()} {s.amount}
+                    {s.side.toUpperCase()}
                   </span>
                 </motion.li>
               ))}

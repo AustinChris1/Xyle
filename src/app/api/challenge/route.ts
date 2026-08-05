@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { runChallenge } from "@/lib/oracle";
 import { TelegraphError } from "@/lib/telegraph/clients";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const schema = z.object({
-  player: z.string().min(1).max(32),
+  player: z.string().min(1).max(32).optional(),
   text: z.string().min(80).max(4000),
 });
 
@@ -21,7 +22,14 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = schema.parse(await req.json());
-    const attempt = await runChallenge(body.player, body.text);
+    const session = await getSession();
+    const player =
+      (session.isLoggedIn && session.handle) ||
+      body.player?.trim() ||
+      "anon";
+    const address = session.isLoggedIn ? session.address : undefined;
+
+    const attempt = await runChallenge(player, body.text, address);
     return NextResponse.json({ attempt }, { status: 201 });
   } catch (err) {
     if (err instanceof z.ZodError) {

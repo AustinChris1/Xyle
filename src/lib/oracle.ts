@@ -5,6 +5,7 @@ import {
   TelegraphError,
   chatJsonObject,
   detectAiText,
+  judgeWithFallback,
   reasonJson,
   reasonJsonConsensus,
   searchNews,
@@ -18,8 +19,15 @@ import type {
 } from "./types";
 
 const SYSTEM_PROMPT = `You are a settlement judge for Signal Arena on Telegraph.
-You receive: (1) a market or claim, (2) news search results, (3) authenticity score.
-Decide if the REAL-WORLD event has clearly occurred based on authentic evidence.
+You receive: (1) today's date, (2) a market or claim, (3) dated news results,
+(4) an authenticity score.
+Decide if the REAL-WORLD event has clearly occurred RECENTLY, based on
+authentic evidence.
+
+Recency is not optional. Each source carries a published date. A market asking
+about the last 48 hours is NOT satisfied by an incident from months ago, no
+matter how well reported. If the only supporting coverage predates the market's
+window, answer "no", not "yes".
 
 Return ONLY valid JSON:
 {
@@ -29,9 +37,10 @@ Return ONLY valid JSON:
 }
 
 Rules:
-- YES only if authentic multi-source evidence supports the event.
-- Prefer NO or uncertain if news looks synthetic, single-source, or vague.
-- confidence must reflect evidence quality and authenticity.`;
+- YES only if authentic multi-source evidence from WITHIN the window supports it.
+- Prefer NO or uncertain if news looks synthetic, single-source, vague, or stale.
+- Cite the dates you relied on in your reasoning.
+- confidence must reflect evidence quality, authenticity, and recency.`;
 
 /**
  * Miner calls are written to the ledger inside the client the moment they
@@ -90,6 +99,7 @@ export async function runOracleTick(marketId: string): Promise<OracleTick> {
       title: `Settled YES: ${market.title}`,
       detail: `${(fusion.confidence * 100).toFixed(0)}% confidence`,
       href: `/markets/${market.id}`,
+      marketId: market.id,
     });
   } else if (new Date(market.closesAt).getTime() < Date.now()) {
     await settleMarket(market, tick.id, "no");
@@ -97,6 +107,7 @@ export async function runOracleTick(marketId: string): Promise<OracleTick> {
       kind: "settled",
       title: `Settled NO (expired): ${market.title}`,
       href: `/markets/${market.id}`,
+      marketId: market.id,
     });
   } else {
     await db.pushActivity({
@@ -104,11 +115,17 @@ export async function runOracleTick(marketId: string): Promise<OracleTick> {
       title: `Reading: ${market.title}`,
       detail: `${fusion.verdict} @ ${(fusion.confidence * 100).toFixed(0)}%`,
       href: `/markets/${market.id}`,
+      marketId: market.id,
     });
   }
 
   const updated = (await db.listTicks(market.id)).find((t) => t.id === tick.id);
-  return updated ?? tick;
+  const finalTick = updated ?? tick;
+  // Awaited on purpose: a serverless function can freeze the moment it
+  // returns, dropping any promise still in flight, so fire-and-forget here
+  // means webhooks silently never arrive in production.
+  await notifyAfterTick(market.id, finalTick);
+  return finalTick;
 }
 
 /** Public infrastructure API: verify any claim without a market. */
@@ -157,24 +174,44 @@ async function fuseClaim(input: {
     if (auth.proof) proofs.push(auth.proof);
     if (auth.degraded) degraded.push("authenticity");
 
+    // Models have no idea what day it is, so the window has to be stated.
+    const now = Date.now();
+    const windowDays = loadConfig().newsWindowDays;
+    const ageDays = (iso?: string) =>
+      iso ? Math.floor((now - Date.parse(iso)) / 86_400_000) : null;
+
+    const freshest = news.articles.reduce<number | null>((best, a) => {
+      const age = ageDays(a.publishedAt);
+      if (age === null) return best;
+      return best === null || age < best ? age : best;
+    }, null);
+
     const userPrompt = [
+      `Today is ${new Date(now).toISOString().slice(0, 10)}.`,
+      `Only evidence from the last ${windowDays} days counts as current.`,
       `Claim / market: ${input.claim}`,
       `Event class: ${input.eventClass}`,
       `Description: ${input.description}`,
       `Confidence threshold: ${input.confidenceThreshold}`,
       `Authenticity: synthetic=${auth.answer === 1} score=${auth.score}`,
       news.articles.length > 0
-        ? "News:"
+        ? "News (with publication dates):"
         : "News: no corroborating coverage was retrievable.",
-      ...news.articles.map((a, i) => `${i + 1}. ${a.title}: ${a.snippet}`),
+      ...news.articles.map((a, i) => {
+        const age = ageDays(a.publishedAt);
+        const when = a.publishedAt
+          ? `${a.publishedAt.slice(0, 10)}, ${age} days ago`
+          : "undated";
+        return `${i + 1}. [${when}] ${a.title}: ${a.snippet}`;
+      }),
     ].join("\n");
 
     // Stages 3 and 4: two independent judges. A single judge failing must not
     // sink the reading, but it does make consensus impossible, so the result
     // can no longer settle YES.
     const [resA, resB] = await Promise.allSettled([
-      reasonJson(SYSTEM_PROMPT, userPrompt),
-      reasonJsonConsensus(SYSTEM_PROMPT, userPrompt),
+      judgeWithFallback("A", SYSTEM_PROMPT, userPrompt),
+      judgeWithFallback("B", SYSTEM_PROMPT, userPrompt),
     ]);
 
     const judgeA = resA.status === "fulfilled" ? resA.value : null;
@@ -225,6 +262,14 @@ async function fuseClaim(input: {
       reasoning = `Held back: no corroborating coverage was retrievable. ${reasoning}`;
     }
 
+    // Belt and braces on top of the prompt: if every dated source predates the
+    // window, the claim is about something old and must not settle YES.
+    if (verdict === "yes" && freshest !== null && freshest > windowDays) {
+      verdict = "uncertain";
+      confidence = Math.min(confidence, 0.4);
+      reasoning = `Held back: the most recent supporting source is ${freshest} days old, outside the ${windowDays} day window. ${reasoning}`;
+    }
+
     const cfg = loadConfig();
     const paid = proofs.filter((p) => !p.mocked);
 
@@ -272,7 +317,26 @@ async function settleMarket(
   });
 }
 
-export async function runChallenge(player: string, text: string) {
+async function notifyAfterTick(marketId: string, tick: OracleTick) {
+  const market = await db.getMarket(marketId);
+  if (!market) return;
+  const settled = market.status.startsWith("settled");
+  const users = await db.listUsers();
+  if (users.length === 0) return;
+  const { notifyWatchers } = await import("./webhooks");
+  await notifyWatchers({
+    users,
+    market,
+    tick: { ...tick, settled: settled || tick.settled },
+    onUserAlert: (address, alert) => db.pushUserAlert(address, alert),
+  });
+}
+
+export async function runChallenge(
+  player: string,
+  text: string,
+  address?: string
+) {
   const { proofs, auth, judgeA, judgeB } = await attributed(
     "challenge",
     undefined,
@@ -349,6 +413,7 @@ Return ONLY JSON: {"verdict":"yes"|"no"|"uncertain","confidence":0-1,"reasoning"
 
   const attempt = await db.addChallenge({
     player: player.trim().slice(0, 32) || "anon",
+    address,
     text: text.slice(0, 4000),
     createdAt: new Date().toISOString(),
     foolScore,
@@ -452,31 +517,75 @@ Max ${max} markets. Titles must be yes/no questions. Skip duplicates of: ${[...e
   return created;
 }
 
-export async function runAllOpenOracles() {
-  const ids = await db.openMarketIds();
+/**
+ * Ticks open markets oldest-read first, capped per cycle.
+ *
+ * A reading takes roughly 15s and costs ~0.04 USDC. Ticking every open market
+ * in one invocation blows past the 60s serverless ceiling once there are more
+ * than three, and at a 15 minute cadence the spend compounds fast. Capping and
+ * rotating means every market still gets read regularly, just not all at once.
+ */
+export async function runAllOpenOracles(limit: number) {
+  const markets = await db.listMarkets();
+  const open = markets
+    .filter((m) => m.status === "open")
+    .sort((a, b) => {
+      // Never-read markets first, then least recently read.
+      const at = a.lastOracleAt ? new Date(a.lastOracleAt).getTime() : 0;
+      const bt = b.lastOracleAt ? new Date(b.lastOracleAt).getTime() : 0;
+      return at - bt;
+    });
+
+  const due = open.slice(0, Math.max(0, limit));
   const results: Array<{ marketId: string; ok: boolean; error?: string }> = [];
-  for (const id of ids) {
+
+  for (const market of due) {
     try {
-      await runOracleTick(id);
-      results.push({ marketId: id, ok: true });
+      await runOracleTick(market.id);
+      results.push({ marketId: market.id, ok: true });
     } catch (err) {
       results.push({
-        marketId: id,
+        marketId: market.id,
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
     }
   }
-  return results;
+
+  return { results, openTotal: open.length, skipped: open.length - due.length };
 }
 
 /** Cron: tick oracles + optionally open markets from news. */
 export async function runCronCycle() {
-  const autoMarkets = await generateMarketsFromNews(2).catch((err) => {
-    console.warn("[cron] auto markets failed:", err);
-    return [] as Market[];
-  });
-  const oracle = await runAllOpenOracles();
+  const cfg = loadConfig();
+
+  // Hard stop before spending anything if the rolling budget is used up.
+  const spentToday = await db.spendSince(24 * 60 * 60 * 1000);
+  if (spentToday >= cfg.cronDailyCapUsdc) {
+    await db.setLastCronAt(new Date().toISOString());
+    return {
+      skippedReason: "daily budget reached",
+      spentUsdcLast24h: spentToday,
+      capUsdc: cfg.cronDailyCapUsdc,
+      autoMarkets: [],
+      oracle: { results: [], openTotal: 0, skipped: 0 },
+    };
+  }
+
+  const autoMarkets = cfg.cronAutoMarkets
+    ? await generateMarketsFromNews(cfg.cronAutoMarketsPerCycle).catch((err) => {
+        console.warn("[cron] auto markets failed:", err);
+        return [] as Market[];
+      })
+    : [];
+
+  const oracle = await runAllOpenOracles(cfg.cronMarketsPerCycle);
   await db.setLastCronAt(new Date().toISOString());
-  return { autoMarkets: autoMarkets.map((m) => m.id), oracle };
+
+  return {
+    autoMarkets: autoMarkets.map((m) => m.id),
+    oracle,
+    spentUsdcLast24h: await db.spendSince(24 * 60 * 60 * 1000),
+    capUsdc: cfg.cronDailyCapUsdc,
+  };
 }

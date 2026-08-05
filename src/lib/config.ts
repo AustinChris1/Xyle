@@ -29,6 +29,14 @@ export function loadConfig() {
     minerDispatcherPrefix:
       process.env.MINER_DISPATCHER_PREFIX || "/miner-dispatcher/v1",
 
+    /**
+     * Evidence must be recent or a market asking about "the next 48 hours"
+     * will happily settle on a nine-month-old article. Tavily accepts `days`
+     * even though the node's catalog schema does not advertise it (probed
+     * 2026-08-05: without it, results reached back to Nov 2025).
+     */
+    newsWindowDays: Number(process.env.NEWS_WINDOW_DAYS ?? 7) || 7,
+
     newsMinerId: process.env.NEWS_MINER_ID || "202",
     newsPath: process.env.NEWS_PATH || "/search",
     newsLabel: process.env.NEWS_LABEL || "Tavily",
@@ -53,6 +61,36 @@ export function loadConfig() {
     consensusPath: process.env.CONSENSUS_PATH || "/chat",
     consensusModel: process.env.CONSENSUS_MODEL || "nova-2-lite",
     consensusLabel: process.env.CONSENSUS_LABEL || "LiteLLM Nova",
+
+    /**
+     * Judge fallbacks. Measured from the ledger, the two judge miners run at
+     * 82% and 88% success on free tiers, so both landing is only ~72% of
+     * readings, and a reading missing a judge can never settle even though it
+     * was paid for. A distinct backup per seat recovers most of that.
+     * Failed calls are not settled, so a retry costs one call, not two.
+     */
+    reasonFallbackMinerId: process.env.REASON_FALLBACK_MINER_ID || "117",
+    reasonFallbackModel: process.env.REASON_FALLBACK_MODEL || "qwen",
+    reasonFallbackLabel: process.env.REASON_FALLBACK_LABEL || "Bedrock Qwen",
+
+    consensusFallbackMinerId:
+      process.env.CONSENSUS_FALLBACK_MINER_ID || "114",
+    consensusFallbackModel:
+      process.env.CONSENSUS_FALLBACK_MODEL || "nova-2-lite",
+    consensusFallbackLabel:
+      process.env.CONSENSUS_FALLBACK_LABEL || "Bedrock Nova",
+
+    /**
+     * Cron guards. A reading is ~15s and ~0.04 USDC, so ticking every open
+     * market in one invocation exceeds the 60s serverless ceiling past about
+     * three markets, and an unbounded 15 minute cadence drains the wallet in
+     * hours. Markets rotate oldest-read first, so all still get covered.
+     */
+    cronMarketsPerCycle: Number(process.env.CRON_MARKETS_PER_CYCLE ?? 2) || 2,
+    cronAutoMarkets: process.env.CRON_AUTO_MARKETS !== "false",
+    cronAutoMarketsPerCycle:
+      Number(process.env.CRON_AUTO_MARKETS_PER_CYCLE ?? 1) || 1,
+    cronDailyCapUsdc: Number(process.env.CRON_DAILY_CAP_USDC ?? 5) || 5,
 
     /** Spend ceiling for the public verify endpoint, per rolling 24h. */
     verifyDailyCapUsdc:

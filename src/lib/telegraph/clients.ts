@@ -342,6 +342,14 @@ export interface NewsArticle {
   title: string;
   snippet: string;
   url?: string;
+  /** ISO date when the miner reports one. */
+  publishedAt?: string;
+}
+
+function toIsoDate(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
 }
 
 /** Evidence stage. Primary news miner, alternate miner as fallback. */
@@ -375,6 +383,8 @@ export async function searchNews(query: string): Promise<{
         include_answer: true,
         topic: "news",
         search_depth: "basic",
+        // Not in the declared schema but honoured by the miner.
+        days: cfg.newsWindowDays,
       },
       "news",
       `${cfg.newsLabel} ${cfg.newsMinerId}`
@@ -386,6 +396,7 @@ export async function searchNews(query: string): Promise<{
         title?: string;
         content?: string;
         url?: string;
+        published_date?: string;
       }>;
     };
 
@@ -394,6 +405,7 @@ export async function searchNews(query: string): Promise<{
         title: r.title?.trim() || `Source ${i + 1}`,
         snippet: (r.content || body.answer || "").slice(0, 320),
         url: r.url,
+        publishedAt: toIsoDate(r.published_date),
       })) ?? [];
 
     if (body.answer && articles.length === 0) {
@@ -427,6 +439,7 @@ export async function searchNews(query: string): Promise<{
         description?: string;
         content?: string;
         url?: string;
+        publishedAt?: string;
       }>;
     };
 
@@ -435,6 +448,7 @@ export async function searchNews(query: string): Promise<{
         title: a.title?.trim() || `Article ${i + 1}`,
         snippet: (a.description || a.content || "").slice(0, 320),
         url: a.url,
+        publishedAt: toIsoDate(a.publishedAt),
       })) ?? [];
 
     return { articles, proof, degraded: articles.length === 0 };
@@ -515,7 +529,7 @@ export async function reasonJson(
   };
 }
 
-/** Second independent judge (LiteLLM / Nova) for consensus. */
+/** Second independent judge for consensus. */
 export async function reasonJsonConsensus(system: string, user: string) {
   const cfg = loadConfig();
   return reasonJson(system, user, {
@@ -525,6 +539,40 @@ export async function reasonJsonConsensus(system: string, user: string) {
     label: `${cfg.consensusLabel} ${cfg.consensusMinerId} judge B`,
     role: "consensus",
   });
+}
+
+/**
+ * A judge seat with a distinct backup miner behind it.
+ *
+ * Free-tier judges rate-limit often enough that requiring both on the first
+ * try wastes a quarter of paid readings. The backup is a different
+ * integration, so the seats stay genuinely independent.
+ */
+export async function judgeWithFallback(
+  seat: "A" | "B",
+  system: string,
+  user: string
+) {
+  const cfg = loadConfig();
+  const primary =
+    seat === "A"
+      ? { minerId: cfg.reasonMinerId, path: cfg.reasonPath, model: cfg.reasonModel, label: `${cfg.reasonLabel} ${cfg.reasonMinerId} judge A`, role: "reason" as const }
+      : { minerId: cfg.consensusMinerId, path: cfg.consensusPath, model: cfg.consensusModel, label: `${cfg.consensusLabel} ${cfg.consensusMinerId} judge B`, role: "consensus" as const };
+
+  const backup =
+    seat === "A"
+      ? { minerId: cfg.reasonFallbackMinerId, path: cfg.reasonPath, model: cfg.reasonFallbackModel, label: `${cfg.reasonFallbackLabel} ${cfg.reasonFallbackMinerId} judge A backup`, role: "reason" as const }
+      : { minerId: cfg.consensusFallbackMinerId, path: cfg.consensusPath, model: cfg.consensusFallbackModel, label: `${cfg.consensusFallbackLabel} ${cfg.consensusFallbackMinerId} judge B backup`, role: "consensus" as const };
+
+  try {
+    return await reasonJson(system, user, primary);
+  } catch (err) {
+    console.warn(
+      `[judge ${seat}] ${primary.minerId} unavailable, trying ${backup.minerId}:`,
+      err instanceof Error ? err.message : err
+    );
+    return reasonJson(system, user, backup);
+  }
 }
 
 /** Free-form JSON object from a chat miner (market factory, etc.). */

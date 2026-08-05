@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowLeftIcon } from "@/components/Icon";
 import { notFound } from "next/navigation";
 import { MarketDetailClient } from "@/components/MarketDetailClient";
 import { loadConfig } from "@/lib/config";
@@ -34,7 +35,7 @@ export default async function MarketPage({
         href="/markets"
         className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-copper"
       >
-        <span aria-hidden="true">&larr;</span> All markets
+        <ArrowLeftIcon size={13} /> All markets
       </Link>
       <MarketDetailClient
         initialMarket={market}

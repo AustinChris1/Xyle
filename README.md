@@ -97,6 +97,108 @@ curl -X POST http://localhost:3000/api/oracle/verify \
 
 Conviction outcomes + adversary scores.
 
+### 5b. Outbound webhooks
+
+Both the **personal webhook** and each **agent** fire on the same trigger: a
+market **you watch** reaching a settled state. The difference is only shape.
+
+| | Personal webhook | Agent |
+|---|---|---|
+| How many | One per account | Many, each named |
+| Payload | No `agentId` | Includes `agentId` |
+| Delivery result | Not reported | Success or failure lands in your alerts |
+
+Request:
+
+```http
+POST <your url>
+Content-Type: application/json
+X-Signal-Arena-Signature: sha256=<hmac-sha256 of the raw body>
+
+{
+  "type": "market.settled",
+  "at": "2026-08-04T09:12:00.000Z",
+  "market": {
+    "id": "mkt_...",
+    "title": "Will a major DeFi protocol exploit be confirmed...?",
+    "status": "settled_yes",
+    "verdict": "yes",
+    "confidence": 0.86
+  },
+  "tick": { "id": "tick_...", "verdict": "yes", "confidence": 0.86, "settled": true },
+  "agentId": "agt_..."
+}
+```
+
+Verify it in your receiver:
+
+```js
+const expected =
+  "sha256=" +
+  crypto.createHmac("sha256", process.env.WEBHOOK_SECRET)
+        .update(rawBody)   // the raw body, before JSON.parse
+        .digest("hex");
+// compare with crypto.timingSafeEqual against the header
+```
+
+**URL rules.** Callbacks must be `https` and must resolve to a public host.
+Loopback, private (RFC1918), link-local, and cloud-metadata addresses are
+rejected at registration and again at delivery, and redirects are refused,
+because the server fetches these URLs. For local testing against
+`http://localhost`, set `ALLOW_INSECURE_WEBHOOKS=true`.
+
+Delivery is best-effort with an 8 second timeout and **no retry**.
+
+#### Try it in 30 seconds
+
+Waiting for a real settlement to test an endpoint is impractical, so both the
+personal webhook and every agent have a **Send test event** button on `/desk`.
+
+1. Open <https://webhook.site>. It gives you a unique https URL and shows every
+   request it receives, live. Nothing to install, no signup.
+2. Copy the URL, for example
+   `https://webhook.site/f6689be2-ccc9-4102-83d5-07a37667d518`.
+3. Paste it into **Personal webhook** and press Save, or register it as an
+   agent with any name.
+4. Press the ⚡ **Send test event** button.
+5. The webhook.site tab shows the POST instantly, including the
+   `X-Signal-Arena-Signature` header.
+
+Any URL that accepts a POST works the same way: a Pipedream or RequestBin
+endpoint, a Zapier or Make catch hook, an n8n webhook node, or your own server.
+For a local receiver, expose it with `ngrok http 3000` and use the https URL it
+prints, or set `ALLOW_INSECURE_WEBHOOKS=true` to allow plain `localhost`.
+
+The test event is identical in shape to a real one except `type` is
+`webhook.test` and the market ids are `mkt_test` / `tick_test`, so a receiver
+can safely ignore it in production:
+
+```js
+if (body.type === "webhook.test") return res.status(200).end();
+```
+
+```http
+POST /api/me/webhooks/test      # session cookie required
+{ "agentId": "agt_..." }        # omit agentId to test the personal webhook
+```
+
+### 6. My desk (`/desk`) — SIWE identity
+
+1. **Connect wallet** (any EIP-6963 wallet: MetaMask, Rabby, Phantom, ...).
+   Connecting immediately asks you to sign a SIWE message, so it is one action.
+   Dismissing the signature leaves you connected with a **Sign in** fallback.
+2. On **My desk** you get:
+   - editable **handle**
+   - **watchlist** of markets + keyword filters
+   - **alerts** when watched markets settle or cross confidence
+   - **personal webhook**: one URL, fires on every settle you watch
+   - **agents**: named callbacks, same trigger, each tagged with its `agentId`
+     and each reporting delivery success or failure back into your alerts
+
+Miner fees always come from the **app server** wallet. Your wallet is identity, not a payment source.
+
+Share cards use your handle, e.g. `@alice · market settled YES @ 85%`.
+
 ---
 
 ## Auto market postings
@@ -130,9 +232,104 @@ or
 GET /api/cron/oracle?secret=<CRON_SECRET>
 ```
 
-`vercel.json` schedules this every **15 minutes**. On **Vercel Hobby**, cron may only fire **once per day**. For a real always-on demo, use a free external scheduler such as [cron-job.org](https://cron-job.org) hitting the same URL every 15 minutes.
+`vercel.json` is pinned to `0 6 * * *` (once daily). **Vercel Hobby caps cron at
+once per day and rejects any more frequent expression at deploy time**, so
+putting `*/15 * * * *` back will fail the deploy unless the project is on Pro.
+
+For the 15 minute demo cadence, drive it externally with a free scheduler such
+as [cron-job.org](https://cron-job.org) hitting the same URL. That also keeps
+the cadence working on any host.
 
 The UI shows a **“next reading in m:ss”** countdown based on the last cron / last reading.
+
+### Running the cron, three ways
+
+`CRON_SECRET` must be set or the endpoint returns **503** before doing anything.
+
+**A cycle is bounded on purpose.** One reading takes ~13s and costs ~0.04 USDC,
+so ticking every open market in a single invocation does not fit: measured at
+17 open markets it ran well past the **60s** Vercel function ceiling, and at a
+15 minute cadence it would drain a 20 USDC wallet in hours.
+
+Instead each cycle ticks `CRON_MARKETS_PER_CYCLE` markets, **oldest-read
+first**, so every market still gets covered on rotation. Measured locally:
+
+| Setting | Wall time | Cost per cycle |
+|---|---|---|
+| 2 markets + 1 auto market (default) | ~40s | ~0.10 USDC |
+| 3 markets + 1 auto market | **53s** (too close to the 60s cap) | ~0.14 USDC |
+
+`CRON_DAILY_CAP_USDC` (default 5) is a hard stop checked from the ledger before
+any spend. Once the rolling 24h total passes it, the endpoint returns in
+milliseconds having done nothing:
+
+```json
+{"ok":true,"skippedReason":"daily budget reached","spentUsdcLast24h":2.87,"capUsdc":1}
+```
+
+At the default 5 USDC/day a ~20 USDC burner survives about four days of
+continuous operation. Raise the cap only if the wallet can back it.
+
+**The endpoint answers immediately.** A cycle takes ~40s, which is longer than
+most schedulers wait (cron-job.org's free tier cuts off at **30s**). So the
+route sends its response first and runs the cycle in Next's `after()`, which
+stays alive up to `maxDuration`. Measured: **HTTP 202 in 80ms**, cycle finishes
+~50s later.
+
+```json
+{"ok":true,"mode":"scheduled","willTick":2,"openMarkets":18,
+ "spentUsdcLast24h":2.95,"capUsdc":5}
+```
+
+**A. Locally, one manual cycle.** Add `sync=1` to run inline and see results:
+
+```bash
+curl "http://localhost:3000/api/cron/oracle?secret=$CRON_SECRET&sync=1"
+```
+
+Without `sync=1` you get the fast 202 and check `/ledger` or `/api/stats` for
+the outcome. Never use `sync=1` from a scheduler; it will time out.
+
+**B. Locally, on a loop.** A terminal you leave running:
+
+```bash
+while true; do
+  curl -s "http://localhost:3000/api/cron/oracle?secret=$CRON_SECRET" \
+    | head -c 200; echo;
+  sleep 900   # 15 minutes
+done
+```
+
+**C. Deployed, always on.** This is the one that matters for judging, because
+the app keeps working while nobody is watching.
+
+1. Deploy, then set `CRON_SECRET` in Vercel project settings and redeploy so
+   the value is live.
+2. Confirm it responds:
+   `curl "https://your-app.vercel.app/api/cron/oracle?secret=YOUR_SECRET"`
+3. Sign up free at [cron-job.org](https://cron-job.org) and create a job:
+   - URL: `https://your-app.vercel.app/api/cron/oracle?secret=YOUR_SECRET`
+   - Schedule: every 15 minutes
+   - Method: GET (the default 30s timeout is fine, the route answers in ms)
+   - Optional: put the secret in an `Authorization: Bearer <secret>` header
+     instead of the query string, so it stays out of their request logs
+4. Watch the first execution turn green, then check `/ledger` for new rows.
+
+Vercel's own daily cron in `vercel.json` still fires as a floor, so the app
+stays alive even if the external scheduler is removed.
+
+**Troubleshooting**
+
+| Response | Meaning |
+|---|---|
+| `503 CRON_SECRET not configured` | Env var missing on the server. Redeploy after setting it. |
+| `401 UNAUTHORIZED` | Secret in the URL does not match the deployed one. |
+| `202` with `mode:"scheduled"` | Normal. The cycle runs after the response. |
+| `{"ok":true,"oracle":{"results":[]}}` | Worked, but no markets were open. |
+| `skippedReason: "daily budget reached"` | Rolling 24h spend hit `CRON_DAILY_CAP_USDC`. Working as designed. |
+| Scheduler reports a timeout | You are probably calling it with `sync=1`. Drop it; the default mode answers in milliseconds. |
+| Times out even without `sync=1` | Lower `CRON_MARKETS_PER_CYCLE`. Hobby caps total function time at 60s. |
+| `oracle.skipped` is large | Normal. Those markets get read on later cycles. |
 
 ---
 
@@ -176,6 +373,15 @@ TELEGRAPH_NODE_URL=http://13.237.89.59:7044
 EVM_PRIVATE_KEY=0x...
 EVM_NETWORK=eip155:84532
 CRON_SECRET=choose-a-long-random-string
+SESSION_SECRET=at-least-32-characters-for-siwe-cookies
+WEBHOOK_SECRET=another-long-random-string
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+Generate the three secrets with:
+
+```bash
+node -e "const c=require('crypto');for(const k of ['CRON_SECRET','SESSION_SECRET','WEBHOOK_SECRET'])console.log(k+'='+c.randomBytes(32).toString('base64url'))"
 ```
 
 Optional but recommended for Vercel:
@@ -209,7 +415,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### First walkthrough
 
-1. Confirm the top ribbon shows **LIVE MINERS** and **node up**.  
+1. Confirm the top ribbon shows **Oracle live** with a green dot.  
 2. Go to **Markets** → paste a real headline → **Open market**.  
 3. Record conviction YES/NO.  
 4. Run a reading (or wait for cron).  
@@ -246,6 +452,7 @@ Set the same env vars in the Vercel project. Add Turso for durable state. Arm cr
 | `/markets/[id]` | Conviction, manual reading, proofs |
 | `/challenge` | Adversary + hall of breaks |
 | `/ledger` | Public miner demand scoreboard |
+| `/desk` | SIWE profile, watchlist, agents, alerts |
 | `/leaderboard` | Scores |
 
 ### Main APIs
@@ -260,6 +467,17 @@ Set the same env vars in the Vercel project. Add Turso for durable state. Arm cr
 | `POST` | `/api/markets/[id]/oracle` | Manual reading |
 | `POST` | `/api/challenge` | Adversary attempt |
 | `GET` | `/api/cron/oracle` | Auto markets + tick all open |
+| `GET` | `/api/stats` | Public status feed for the ribbon |
+| `GET` | `/api/leaderboard` | Standings JSON |
+| `GET/POST` | `/api/markets` | List / create markets |
+| `POST` | `/api/markets/[id]/stake` | Record conviction |
+| `GET` | `/api/auth/nonce` | SIWE nonce |
+| `POST` | `/api/auth/verify` | SIWE verify, sets session |
+| `POST` | `/api/auth/logout` | Clear session |
+| `GET/PATCH` | `/api/me` | Desk payload / profile update |
+| `GET/POST/DELETE` | `/api/me/agents` | Manage agent callbacks |
+| `POST` | `/api/me/webhooks/test` | Send a sample event to an endpoint |
+| `POST` | `/api/me/watchlist` | Toggle a watched market |
 
 In-depth design: **[ARCHITECTURE.md](./ARCHITECTURE.md)**  
 Wallets and payment network: **[KEYS.md](./KEYS.md)**

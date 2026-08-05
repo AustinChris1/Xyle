@@ -190,11 +190,15 @@ open market
 
 `runCronCycle`:
 
-1. `generateMarketsFromNews(2)`  
+0. Check rolling 24h ledger spend against `CRON_DAILY_CAP_USDC`. If reached,
+   return immediately having spent nothing.
+1. `generateMarketsFromNews(CRON_AUTO_MARKETS_PER_CYCLE)`, default 1  
    - Tavily search for exploit / flight / contradicted-claim topics  
    - Chat miner returns JSON market proposals  
-   - Skip title duplicates; create up to 2 markets (`source: "auto"`)  
-2. `runAllOpenOracles()` ticks every open market  
+   - Skip title duplicates; create with `source: "auto"`  
+   - Disable entirely with `CRON_AUTO_MARKETS=false`  
+2. `runAllOpenOracles(CRON_MARKETS_PER_CYCLE)`, default 2, **oldest-read
+   first** so coverage rotates instead of starving the tail  
 3. `setLastCronAt`
 
 Spend note: each cron cycle can spend several miner calls (scan + frame + 4× open markets). Arm cron only with a funded wallet.
@@ -229,6 +233,8 @@ Critical groups:
 | Pay | `EVM_PRIVATE_KEY`, `EVM_NETWORK` |
 | Limits | `VERIFY_PER_IP_HOURLY`, `VERIFY_DAILY_CAP_USDC` |
 | Cron | `CRON_SECRET`, `ORACLE_INTERVAL_MINUTES` |
+| Identity | `SESSION_SECRET` (iron-session, min 32 chars) |
+| Webhooks | `WEBHOOK_SECRET`, `ALLOW_INSECURE_WEBHOOKS` |
 | Store | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` |
 | Mode | `FORCE_MOCK` |
 
@@ -251,26 +257,86 @@ Authenticity gate intentionally blocks “both judges YES but coverage looks syn
 
 ---
 
-## 11. Security
+## 11. Identity (SIWE)
+
+Users optional-sign in with Ethereum (Base Sepolia) via SIWE:
+
+- `GET /api/auth/nonce` → nonce  
+- wallet signs EIP-4361 message  
+- `POST /api/auth/verify` → iron-session cookie (`SESSION_SECRET`)  
+- Profile stored in persist layer under `users[address]`
+
+**Payments stay server-side.** Connect wallet does not transfer user USDC for miner calls.
+
+Watchlists + personal/agent webhooks fire after ticks via `lib/webhooks.ts` when a market settles (and soft confidence alerts for watched items).
+
+**Delivery trigger.** Both the personal webhook and every agent fire on exactly
+one condition: `interested && tick.settled`, where `interested` means the user
+watches that market id **or** one of their keywords matches the market title.
+Non-settling readings never dispatch, which keeps volume proportional to real
+outcomes rather than to tick frequency.
+
+**Testing without a settlement.** `POST /api/me/webhooks/test` sends a
+`webhook.test` event of identical shape to any registered endpoint, so a
+receiver can be verified in seconds instead of waiting hours for a market to
+resolve. The result is written into the user's alerts like a real delivery.
+
+### Cron response model
+
+The route validates the secret, schedules the cycle with `after()` from
+`next/server`, and returns **202 in ~80ms**. External schedulers abort long
+requests (cron-job.org's free tier at 30s) while a real cycle takes ~40s, so
+returning first is the only way to keep both. `after()` callbacks run inside
+the route's `maxDuration`, unlike a bare floating promise which a frozen
+serverless instance would drop. `?sync=1` forces inline execution for
+debugging.
+
+### Cron budget and time guards
+
+`runCronCycle` is bounded twice, because a naive "tick everything" loop breaks
+on both axes:
+
+- **Time.** One reading is ~13s. Measured at 17 open markets a full sweep ran
+  far past the 60s serverless ceiling. `CRON_MARKETS_PER_CYCLE` (default 2)
+  caps the batch and `runAllOpenOracles` sorts **oldest-read first**, so
+  coverage rotates rather than starving the tail.
+- **Money.** At 15 minute cadence an uncapped sweep costs tens of USDC per day.
+  `CRON_DAILY_CAP_USDC` (default 5) is read from the consumption ledger before
+  any call is made, so hitting it costs nothing and returns immediately with
+  `skippedReason: "daily budget reached"`.
+
+## 12. Security
 
 - Server holds `EVM_PRIVATE_KEY`. Use a **burner** funded only for the demo.  
 - Verify is public but throttled; do not remove the cap on a public URL without another budget control.  
 - Cron requires `CRON_SECRET` (or Vercel cron header).  
-- No user auth for conviction handles (demo trust model).  
+- SIWE session cookies are httpOnly; set a strong `SESSION_SECRET` in production.
+- **Outbound webhooks are an SSRF surface**: the server fetches user-supplied
+  URLs. `lib/webhook-safety.ts` requires `https` and rejects loopback, RFC1918,
+  link-local (`169.254.0.0/16`, cloud metadata), `.internal`/`.local` and
+  multicast hosts. Validation runs at registration **and** again at delivery,
+  and `redirect: "error"` stops a public URL bouncing to an internal one.
+  `ALLOW_INSECURE_WEBHOOKS=true` disables both checks and is local-only.
+- Deliveries are signed with `X-Signal-Arena-Signature: sha256=<hmac>` over the
+  raw body using `WEBHOOK_SECRET` (falls back to `SESSION_SECRET`).
+- Webhook sends are **awaited**. A serverless function can freeze the moment it
+  returns, so fire-and-forget delivery silently never arrives in production.
 
 ---
 
-## 12. Future work (out of scope for H1)
+## 13. Future work (out of scope for H1)
 
 - On-chain conviction pots / escrow with the same x402 wallet  
 - Normalized SQL ledger with per-miner analytics  
-- Webhooks when markets settle (agent automation)  
+- Webhook retries with backoff and a dead-letter view (delivery is currently
+  single-attempt, 8s timeout)
+- Enforce `Agent.maxUsdcPerDay`, which is stored but not yet applied
 - Swap judges when free-tier quality drops  
 - Re-enable ItsAI / BitMind when those integrations are healthy again  
 
 ---
 
-## 13. File index (core)
+## 14. File index (core)
 
 ```
 src/lib/oracle.ts                 fusion, challenge, cron, auto markets
@@ -284,6 +350,14 @@ src/lib/markets-from-headline.ts  user market factory
 src/app/api/oracle/verify         public infrastructure API
 src/app/api/cron/oracle           always-on cycle
 src/app/api/ledger                demand JSON
+src/lib/webhooks.ts               watcher fan-out + delivery
+src/lib/webhook-safety.ts         SSRF guard + HMAC signing
+src/lib/auth/session.ts           iron-session SIWE cookie
+src/lib/wallet-detect.ts          EIP-6963 connector selection + error copy
+src/lib/wagmi.ts                  wagmi config (multi-injected discovery)
+src/components/Icon.tsx           shared stroke icon set
+src/components/ActionButton.tsx   pending-state button + spinner
+src/components/Toast.tsx          toast provider
 src/app/ledger                    demand UI
 ```
 

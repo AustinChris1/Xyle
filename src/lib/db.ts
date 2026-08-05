@@ -8,12 +8,15 @@ import {
 } from "./persist";
 import type {
   ActivityItem,
+  Agent,
   ChallengeAttempt,
   ConsumptionEntry,
   LeaderboardEntry,
   Market,
   OracleTick,
-  Stake,
+  Forecast,
+  UserAlert,
+  UserProfile,
 } from "./types";
 
 const globalForDb = globalThis as unknown as {
@@ -54,6 +57,13 @@ function store(): PersistedStore {
 
 function persist() {
   void queueSave(store());
+}
+
+/** potYes / potNo are forecaster counts now, so recompute them from scratch. */
+function recountMarket(market: Market) {
+  const forecasts = store().stakes.filter((f) => f.marketId === market.id);
+  market.potYes = forecasts.filter((f) => f.side === "yes").length;
+  market.potNo = forecasts.filter((f) => f.side === "no").length;
 }
 
 const SEED_VERSION = 2;
@@ -165,6 +175,8 @@ export const db = {
     closesInHours?: number;
     source?: Market["source"];
     sourceHeadline?: string;
+    createdBy?: string;
+    createdByHandle?: string;
   }): Promise<Market> {
     await ensureReady();
     const cfg = loadConfig();
@@ -183,6 +195,8 @@ export const db = {
       createdAt: new Date().toISOString(),
       source: input.source ?? "user",
       sourceHeadline: input.sourceHeadline,
+      createdBy: input.createdBy?.toLowerCase(),
+      createdByHandle: input.createdByHandle,
     };
     store().markets.unshift(market);
     await this.pushActivity({
@@ -190,6 +204,7 @@ export const db = {
       title: market.title,
       detail: market.sourceHeadline || market.eventClass,
       href: `/markets/${market.id}`,
+      marketId: market.id,
     });
     return market;
   },
@@ -206,18 +221,26 @@ export const db = {
     return m;
   },
 
-  async listStakes(marketId?: string): Promise<Stake[]> {
+  async listStakes(marketId?: string): Promise<Forecast[]> {
     await ensureReady();
     const all = store().stakes;
     return marketId ? all.filter((s) => s.marketId === marketId) : [...all];
   },
 
-  async addStake(input: {
+  /**
+   * Records one forecast per wallet per market. Calling again replaces the
+   * previous call, so people can change their mind while a market is open
+   * without inflating the counts.
+   *
+   * potYes / potNo now hold counts of forecasters rather than wagered
+   * amounts, so the split bar reads as how many people say YES.
+   */
+  async addForecast(input: {
     marketId: string;
     player: string;
+    address: string;
     side: "yes" | "no";
-    amount: number;
-  }): Promise<Stake> {
+  }): Promise<Forecast> {
     await ensureReady();
     const market = store().markets.find((m) => m.id === input.marketId);
     if (!market) throw new Error("MARKET_NOT_FOUND");
@@ -227,21 +250,40 @@ export const db = {
       persist();
       throw new Error("MARKET_EXPIRED");
     }
-    if (input.amount <= 0 || input.amount > 100) throw new Error("INVALID_AMOUNT");
 
-    const stake: Stake = {
-      id: uid("stk"),
+    const address = input.address.toLowerCase();
+    const all = store().stakes;
+    const existingIndex = all.findIndex(
+      (f) => f.marketId === input.marketId && f.address === address
+    );
+
+    const forecast: Forecast = {
+      id: existingIndex >= 0 ? all[existingIndex]!.id : uid("fc"),
       marketId: input.marketId,
       player: input.player.trim().slice(0, 32) || "anon",
+      address,
       side: input.side,
-      amount: Math.round(input.amount * 100) / 100,
       createdAt: new Date().toISOString(),
     };
-    store().stakes.push(stake);
-    if (stake.side === "yes") market.potYes += stake.amount;
-    else market.potNo += stake.amount;
+
+    if (existingIndex >= 0) all[existingIndex] = forecast;
+    else all.push(forecast);
+
+    recountMarket(market);
     persist();
-    return stake;
+    return forecast;
+  },
+
+  async getForecast(
+    marketId: string,
+    address?: string
+  ): Promise<Forecast | undefined> {
+    if (!address) return undefined;
+    await ensureReady();
+    const a = address.toLowerCase();
+    return store().stakes.find(
+      (f) => f.marketId === marketId && f.address === a
+    );
   },
 
   async listTicks(marketId?: string): Promise<OracleTick[]> {
@@ -281,7 +323,11 @@ export const db = {
     attempt: Omit<ChallengeAttempt, "id">
   ): Promise<ChallengeAttempt> {
     await ensureReady();
-    const full: ChallengeAttempt = { ...attempt, id: uid("chal") };
+    const full: ChallengeAttempt = {
+      ...attempt,
+      id: uid("chal"),
+      address: attempt.address?.toLowerCase(),
+    };
     store().challenges.unshift(full);
     if (store().challenges.length > 300) store().challenges.length = 300;
     persist();
@@ -410,6 +456,11 @@ export const db = {
     return store().lastCronAt;
   },
 
+  /**
+   * Ranks by how often people were right, not by an invented balance.
+   * Accuracy is the honest score for a forecasting product and stays
+   * meaningful whether someone made three calls or thirty.
+   */
   async leaderboard(): Promise<LeaderboardEntry[]> {
     await ensureReady();
     const map = new Map<string, LeaderboardEntry>();
@@ -417,8 +468,10 @@ export const db = {
       if (!map.has(player)) {
         map.set(player, {
           player,
-          stakeWins: 0,
-          stakePnL: 0,
+          resolved: 0,
+          correct: 0,
+          accuracy: 0,
+          pending: 0,
           challengeBest: 0,
           challengeCount: 0,
           totalScore: 0,
@@ -427,23 +480,19 @@ export const db = {
       return map.get(player)!;
     };
 
-    for (const market of store().markets) {
-      if (market.status !== "settled_yes" && market.status !== "settled_no")
-        continue;
-      const winSide = market.status === "settled_yes" ? "yes" : "no";
-      const winPot = winSide === "yes" ? market.potYes : market.potNo;
-      const losePot = winSide === "yes" ? market.potNo : market.potYes;
-      const stakes = store().stakes.filter((s) => s.marketId === market.id);
-      for (const s of stakes) {
-        const e = ensure(s.player);
-        if (s.side === winSide) {
-          e.stakeWins += 1;
-          const share =
-            winPot > 0 ? (s.amount / winPot) * (winPot + losePot) : 0;
-          e.stakePnL += share - s.amount;
-        } else {
-          e.stakePnL -= s.amount;
-        }
+    const marketById = new Map(store().markets.map((m) => [m.id, m]));
+
+    for (const f of store().stakes) {
+      const market = marketById.get(f.marketId);
+      if (!market) continue;
+      const e = ensure(f.player);
+
+      if (market.status === "settled_yes" || market.status === "settled_no") {
+        const winSide = market.status === "settled_yes" ? "yes" : "no";
+        e.resolved += 1;
+        if (f.side === winSide) e.correct += 1;
+      } else {
+        e.pending += 1;
       }
     }
 
@@ -454,13 +503,14 @@ export const db = {
     }
 
     for (const e of map.values()) {
+      e.accuracy = e.resolved > 0 ? e.correct / e.resolved : 0;
+      // Accuracy alone would rank a lucky 1-for-1 above a steady 18-for-20,
+      // so weight it by how many calls actually resolved.
+      const forecasting = e.correct * 40 + e.accuracy * 60;
       e.totalScore =
-        e.stakeWins * 100 +
-        e.stakePnL * 10 +
-        e.challengeBest * 500 +
-        e.challengeCount * 5;
-      e.stakePnL = Math.round(e.stakePnL * 100) / 100;
-      e.totalScore = Math.round(e.totalScore * 10) / 10;
+        Math.round(
+          (forecasting + e.challengeBest * 200 + e.challengeCount * 5) * 10
+        ) / 10;
     }
 
     return [...map.values()].sort((a, b) => b.totalScore - a.totalScore);
@@ -471,5 +521,159 @@ export const db = {
     return store()
       .markets.filter((m) => m.status === "open")
       .map((m) => m.id);
+  },
+
+  // ── SIWE profiles ──────────────────────────────────────────────
+
+  async ensureUser(address: string, handleHint?: string): Promise<UserProfile> {
+    await ensureReady();
+    const key = address.toLowerCase();
+    const s = store();
+    if (!s.users) s.users = {};
+    const existing = s.users[key];
+    if (existing) return existing;
+    const now = new Date().toISOString();
+    const short = `${key.slice(0, 6)}…${key.slice(-4)}`;
+    const profile: UserProfile = {
+      address: key,
+      handle: (handleHint || short).slice(0, 32),
+      createdAt: now,
+      updatedAt: now,
+      watchlistMarketIds: [],
+      watchlistKeywords: [],
+      agents: [],
+      alerts: [],
+    };
+    s.users[key] = profile;
+    persist();
+    return profile;
+  },
+
+  async getUser(address: string): Promise<UserProfile | undefined> {
+    await ensureReady();
+    return store().users?.[address.toLowerCase()];
+  },
+
+  async listUsers(): Promise<UserProfile[]> {
+    await ensureReady();
+    return Object.values(store().users || {});
+  },
+
+  async updateUser(
+    address: string,
+    patch: Partial<
+      Pick<
+        UserProfile,
+        | "handle"
+        | "watchlistMarketIds"
+        | "watchlistKeywords"
+        | "webhookUrl"
+        | "agents"
+        | "alerts"
+      >
+    >
+  ): Promise<UserProfile> {
+    await ensureReady();
+    const key = address.toLowerCase();
+    const profile = await this.ensureUser(key);
+    Object.assign(profile, patch, { updatedAt: new Date().toISOString() });
+    if (patch.handle) profile.handle = patch.handle.trim().slice(0, 32) || profile.handle;
+    if (patch.webhookUrl !== undefined) {
+      profile.webhookUrl = patch.webhookUrl?.trim() || undefined;
+    }
+    store().users[key] = profile;
+    persist();
+    return profile;
+  },
+
+  async toggleWatchMarket(address: string, marketId: string): Promise<UserProfile> {
+    const profile = await this.ensureUser(address);
+    const set = new Set(profile.watchlistMarketIds);
+    if (set.has(marketId)) set.delete(marketId);
+    else set.add(marketId);
+    return this.updateUser(address, { watchlistMarketIds: [...set] });
+  },
+
+  async setWatchKeywords(address: string, keywords: string[]): Promise<UserProfile> {
+    const cleaned = keywords
+      .map((k) => k.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 20);
+    return this.updateUser(address, { watchlistKeywords: cleaned });
+  },
+
+  async addAgent(
+    address: string,
+    input: { name: string; callbackUrl: string; maxUsdcPerDay?: number }
+  ): Promise<Agent> {
+    const profile = await this.ensureUser(address);
+    let url: URL;
+    try {
+      url = new URL(input.callbackUrl);
+    } catch {
+      throw new Error("INVALID_CALLBACK_URL");
+    }
+    if (!["http:", "https:"].includes(url.protocol)) {
+      throw new Error("INVALID_CALLBACK_URL");
+    }
+    const agent: Agent = {
+      id: uid("agt"),
+      name: input.name.trim().slice(0, 48) || "agent",
+      callbackUrl: url.toString(),
+      maxUsdcPerDay: input.maxUsdcPerDay,
+      createdAt: new Date().toISOString(),
+      ownerAddress: address.toLowerCase(),
+    };
+    const agents = [...profile.agents, agent].slice(-20);
+    await this.updateUser(address, { agents });
+    return agent;
+  },
+
+  async removeAgent(address: string, agentId: string): Promise<UserProfile> {
+    const profile = await this.ensureUser(address);
+    return this.updateUser(address, {
+      agents: profile.agents.filter((a) => a.id !== agentId),
+    });
+  },
+
+  async pushUserAlert(
+    address: string,
+    alert: Omit<UserAlert, "id" | "at" | "read">
+  ) {
+    const profile = await this.ensureUser(address);
+    const next: UserAlert = {
+      ...alert,
+      id: uid("alt"),
+      at: new Date().toISOString(),
+      read: false,
+    };
+    const alerts = [next, ...profile.alerts].slice(0, 50);
+    await this.updateUser(address, { alerts });
+  },
+
+  async markAlertsRead(address: string) {
+    const profile = await this.ensureUser(address);
+    await this.updateUser(address, {
+      alerts: profile.alerts.map((a) => ({ ...a, read: true })),
+    });
+  },
+
+  async deskFor(address: string) {
+    await ensureReady();
+    const key = address.toLowerCase();
+    const profile = await this.ensureUser(key);
+    const markets = store().markets.filter(
+      (m) =>
+        m.createdBy === key || profile.watchlistMarketIds.includes(m.id)
+    );
+    const stakes = store().stakes.filter((s) => s.address === key);
+    const challenges = store().challenges.filter((c) => c.address === key);
+    const breaks = challenges.filter((c) => c.brokeThreshold);
+    const activity = (store().activity || []).filter(
+      (a) =>
+        (a.marketId && profile.watchlistMarketIds.includes(a.marketId)) ||
+        markets.some((m) => m.id === a.marketId)
+    );
+    return { profile, markets, stakes, challenges, breaks, activity };
   },
 };

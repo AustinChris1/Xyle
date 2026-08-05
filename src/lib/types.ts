@@ -11,14 +11,26 @@ export interface StageSummary {
   degraded: string[];
 }
 
-export interface Stake {
+/**
+ * One person's call on a market. Deliberately has no size: an unbacked wager
+ * amount measures nothing, whereas one forecast per wallet measures whether
+ * you were right, which is the only score a forecasting product should keep.
+ * `amount` lingers on pre-existing rows and is ignored.
+ */
+export interface Forecast {
   id: string;
   marketId: string;
   player: string;
+  /** Lowercased address. One forecast per address per market. */
+  address?: string;
   side: StakeSide;
-  amount: number;
   createdAt: string;
+  /** @deprecated conviction size from before forecasts; no longer written */
+  amount?: number;
 }
+
+/** @deprecated use Forecast */
+export type Stake = Forecast;
 
 export interface PaymentProof {
   subnet: "itsai" | "desearch" | "groq" | ProofRole;
@@ -38,7 +50,13 @@ export interface OracleTick {
   verdict: OracleVerdict;
   confidence: number;
   reasoning: string;
-  sources: Array<{ title: string; snippet: string; url?: string }>;
+  sources: Array<{
+    title: string;
+    snippet: string;
+    url?: string;
+    /** ISO date the source was published, when the miner reports one. */
+    publishedAt?: string;
+  }>;
   authenticity: {
     aiLikely: boolean;
     score: number;
@@ -73,11 +91,15 @@ export interface Market {
   lastOracleAt?: string;
   source?: "seed" | "user" | "auto";
   sourceHeadline?: string;
+  /** Creator address when opened while signed in. */
+  createdBy?: string;
+  createdByHandle?: string;
 }
 
 export interface ChallengeAttempt {
   id: string;
   player: string;
+  address?: string;
   text: string;
   createdAt: string;
   foolScore: number;
@@ -91,8 +113,13 @@ export interface ChallengeAttempt {
 
 export interface LeaderboardEntry {
   player: string;
-  stakeWins: number;
-  stakePnL: number;
+  /** Forecasts on markets that have since settled. */
+  resolved: number;
+  correct: number;
+  /** correct / resolved, 0 when nothing has resolved yet. */
+  accuracy: number;
+  /** Forecasts still waiting on a settlement. */
+  pending: number;
   challengeBest: number;
   challengeCount: number;
   totalScore: number;
@@ -127,6 +154,7 @@ export interface ActivityItem {
   title: string;
   detail?: string;
   href?: string;
+  marketId?: string;
 }
 
 export interface VerifyResult {
@@ -139,16 +167,58 @@ export interface VerifyResult {
     aiLikely: boolean;
     score: number;
     detail: string;
-    degraded?: boolean;
   };
-  stages: StageSummary;
   consensus: {
     judgeA: OracleVerdict;
     judgeB: OracleVerdict;
     agreed: boolean;
   };
-  sources: Array<{ title: string; snippet: string; url?: string }>;
+  sources: Array<{
+    title: string;
+    snippet: string;
+    url?: string;
+    /** ISO date the source was published, when the miner reports one. */
+    publishedAt?: string;
+  }>;
   proofs: PaymentProof[];
   minerCalls: number;
   costUsdcEstimate: number;
+  stages?: StageSummary;
+}
+
+/** Registered automation agent owned by a SIWE user. */
+export interface Agent {
+  id: string;
+  name: string;
+  callbackUrl: string;
+  /** Soft budget note for the demo; server still pays miners. */
+  maxUsdcPerDay?: number;
+  createdAt: string;
+  ownerAddress: string;
+}
+
+/** Per-wallet profile (identity via SIWE). */
+export interface UserProfile {
+  address: string;
+  handle: string;
+  createdAt: string;
+  updatedAt: string;
+  watchlistMarketIds: string[];
+  watchlistKeywords: string[];
+  /** Personal settle / alert webhook. */
+  webhookUrl?: string;
+  agents: Agent[];
+  /** In-app alerts when watched markets settle or cross confidence. */
+  alerts: UserAlert[];
+}
+
+export interface UserAlert {
+  id: string;
+  at: string;
+  kind: "settled" | "confidence" | "agent_delivery";
+  title: string;
+  detail?: string;
+  href?: string;
+  marketId?: string;
+  read: boolean;
 }

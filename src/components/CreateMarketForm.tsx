@@ -2,19 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { ActionButton } from "@/components/ActionButton";
+import { useToast } from "@/components/Toast";
+import { PlusIcon } from "@/components/Icon";
 
 export function CreateMarketForm() {
   const router = useRouter();
+  const toast = useToast();
   const [headline, setHeadline] = useState("");
   const [player, setPlayer] = useState("operator");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch("/api/markets/from-headline", {
         method: "POST",
@@ -22,11 +23,15 @@ export function CreateMarketForm() {
         body: JSON.stringify({ headline, player }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ?? data.error ?? "Could not open market");
+      if (!res.ok)
+        throw new Error(data.detail ?? data.error ?? "Could not open market");
+      toast.success("Market opened. Taking you to it.");
       router.push(`/markets/${data.market.id}`);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open market");
+      toast.error(
+        err instanceof Error ? err.message : "Could not open that market"
+      );
     } finally {
       setBusy(false);
     }
@@ -63,15 +68,17 @@ export function CreateMarketForm() {
         />
       </label>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <motion.button
+        <ActionButton
           type="submit"
-          disabled={busy || headline.trim().length < 12}
-          whileTap={{ scale: 0.98 }}
-          className="btn-primary text-sm disabled:opacity-50"
+          pending={busy}
+          pendingLabel="Opening market"
+          disabled={headline.trim().length < 12}
+          className="w-full text-sm sm:w-auto"
         >
-          {busy ? "Opening market…" : "Open market"}
-        </motion.button>
-        {error && <p className="text-sm text-no">{error}</p>}
+          <PlusIcon size={14} />
+          Open market
+        </ActionButton>
+        <p className="text-xs text-faint">Costs one paid framing call.</p>
       </div>
     </form>
   );

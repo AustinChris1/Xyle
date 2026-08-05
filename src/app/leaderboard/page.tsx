@@ -13,8 +13,9 @@ export const metadata: Metadata = {
 const columns = [
   { key: "rank", label: "#", align: "text-left" },
   { key: "player", label: "Player", align: "text-left" },
-  { key: "wins", label: "Wins", align: "text-right" },
-  { key: "pnl", label: "P&L", align: "text-right" },
+  { key: "correct", label: "Correct", align: "text-right" },
+  { key: "accuracy", label: "Accuracy", align: "text-right" },
+  { key: "pending", label: "Open", align: "text-right" },
   { key: "best", label: "Best attempt", align: "text-right" },
   { key: "tries", label: "Attempts", align: "text-right" },
   { key: "score", label: "Score", align: "text-right" },
@@ -32,8 +33,9 @@ export default async function LeaderboardPage() {
           Leaderboard
         </h1>
         <p className="mt-2.5 max-w-2xl text-muted">
-          Points come from winning positions, profit taken, and how close your
-          best adversarial attempt came to breaking the oracle.
+          Ranked by how often your calls turned out right, not by an invented
+          balance. One forecast per wallet per market, weighted so a steady
+          record beats one lucky call. Adversary attempts count too.
         </p>
       </header>
 
@@ -79,7 +81,7 @@ export default async function LeaderboardPage() {
                     colSpan={columns.length}
                     className="px-4 py-16 text-center text-muted"
                   >
-                    Nothing here yet. Take a position or try an attempt.
+                    Nothing here yet. Make a forecast or try an attempt.
                   </td>
                 </tr>
               )}
@@ -93,15 +95,24 @@ export default async function LeaderboardPage() {
                   </td>
                   <td className="px-4 py-3 font-medium text-ink">{r.player}</td>
                   <td className="px-4 py-3 text-right font-mono tabular">
-                    {r.stakeWins}
+                    {r.correct}
+                    <span className="text-faint">/{r.resolved}</span>
                   </td>
                   <td
                     className={`px-4 py-3 text-right font-mono tabular ${
-                      r.stakePnL >= 0 ? "text-yes" : "text-no"
+                      r.resolved === 0
+                        ? "text-faint"
+                        : r.accuracy >= 0.5
+                          ? "text-yes"
+                          : "text-no"
                     }`}
                   >
-                    {r.stakePnL >= 0 ? "+" : ""}
-                    {r.stakePnL.toFixed(2)}
+                    {r.resolved === 0
+                      ? "not yet"
+                      : `${(r.accuracy * 100).toFixed(0)}%`}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-muted tabular">
+                    {r.pending}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-copper-hot tabular">
                     {(r.challengeBest * 100).toFixed(1)}

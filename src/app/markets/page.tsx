@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { MarketCard } from "@/components/MarketCard";
+import { MarketBrowser } from "@/components/MarketBrowser";
 import { CreateMarketForm } from "@/components/CreateMarketForm";
 import { NextReading } from "@/components/NextReading";
 import { db } from "@/lib/db";
@@ -34,8 +34,9 @@ export default async function MarketsPage() {
             Open markets
           </h1>
           <p className="mt-2.5 max-w-2xl text-muted">
-            Mark conviction on YES or NO. Readings fuse four miners. Settlement
-            needs dual-judge consensus above the confidence bar.
+            Call YES or NO, one per wallet. Readings fuse four miners.
+            Settlement needs dual-judge consensus above the confidence bar,
+            and your accuracy is what scores.
           </p>
         </div>
         <NextReading
@@ -51,17 +52,7 @@ export default async function MarketsPage() {
           <p className="text-muted">No markets yet. Paste a headline above.</p>
         </div>
       ) : (
-        <div className="grid items-stretch gap-4 md:grid-cols-2">
-          {cards.map(({ market, stakes, lastTick }, i) => (
-            <MarketCard
-              key={market.id}
-              market={market}
-              stakes={stakes}
-              lastTick={lastTick}
-              index={i}
-            />
-          ))}
-        </div>
+        <MarketBrowser rows={cards} />
       )}
     </div>
   );

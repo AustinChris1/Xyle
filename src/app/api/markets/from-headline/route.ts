@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getSession } from "@/lib/auth/session";
 import { createMarketFromHeadline } from "@/lib/markets-from-headline";
 import { TelegraphError } from "@/lib/telegraph/clients";
 
@@ -14,7 +15,18 @@ const schema = z.object({
 export async function POST(req: Request) {
   try {
     const body = schema.parse(await req.json());
-    const market = await createMarketFromHeadline(body.headline, body.player);
+    const session = await getSession();
+    const player =
+      (session.isLoggedIn && session.handle) ||
+      body.player?.trim() ||
+      "operator";
+    const createdBy = session.isLoggedIn ? session.address : undefined;
+
+    const market = await createMarketFromHeadline(
+      body.headline,
+      player,
+      createdBy
+    );
     return NextResponse.json({ market }, { status: 201 });
   } catch (err) {
     if (err instanceof z.ZodError) {

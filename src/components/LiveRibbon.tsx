@@ -37,7 +37,11 @@ export function LiveRibbon() {
         })
         .catch(() => {});
     load();
-    const t = setInterval(load, 15000);
+    // 30s, and only while the tab is visible. A 15s poll from a tab left open
+    // overnight burns a meaningful slice of the Vercel Hobby invocation quota.
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 30000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -84,27 +88,21 @@ export function LiveRibbon() {
           </motion.span>
         </AnimatePresence>
 
+        {/* Only the demand number earns a permanent slot. Market counts live
+            on /markets and the network on /ledger, so they stay in the title. */}
         {stats && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
-            className="flex flex-wrap items-center gap-x-5 gap-y-1"
+            className="flex items-center gap-x-5"
+            title={`${stats.marketsOpen} open, ${stats.marketsSettled} settled, paid on ${networkName(stats.paymentNetwork)}`}
           >
-            <span>
-              <CountUp value={stats.integrations} /> miners
-            </span>
-            <span>
-              <CountUp value={stats.marketsOpen} /> open
-            </span>
-            <span>
-              <CountUp value={stats.marketsSettled} /> settled
-            </span>
             <span className="text-copper">
-              <CountUp value={stats.minerRequests} /> paid calls
+              <CountUp value={stats.minerRequests} /> paid miner calls
             </span>
             <span className="hidden sm:inline">
-              {networkName(stats.paymentNetwork)}
+              <CountUp value={stats.integrations} /> miners live
             </span>
           </motion.div>
         )}
