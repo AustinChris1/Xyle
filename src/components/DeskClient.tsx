@@ -377,7 +377,7 @@ export function DeskClient() {
           <div className="sunken mt-2 overflow-x-auto rounded-lg p-3">
             <pre className="font-mono text-[11px] leading-relaxed text-muted">
 {`POST <your url>
-X-Signal-Arena-Signature: sha256=<hmac of the body>
+X-Xyle-Signature: sha256=<hmac of the body>
 
 {
   "type": "market.settled",

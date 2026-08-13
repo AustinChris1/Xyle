@@ -1,12 +1,18 @@
+---
+title: Architecture
+summary: How the oracle, payments, persistence, and Pulse actually fit together. For reviewers and anyone extending it.
+order: 3
+---
+
 # Architecture
 
-In-depth technical design of Signal Arena for reviewers, teammates, and judges who want more than the README.
+In-depth technical design of Xyle for reviewers, teammates, and judges who want more than the README.
 
 ---
 
 ## 1. Product shape
 
-Signal Arena is three surfaces on one oracle core:
+Xyle is three surfaces on one oracle core:
 
 | Surface | Role |
 |---------|------|
@@ -305,6 +311,37 @@ on both axes:
   any call is made, so hitting it costs nothing and returns immediately with
   `skippedReason: "daily budget reached"`.
 
+## 11b. Pulse
+
+`lib/telegraph/pulse.ts` + `lib/telegraph/catalog.ts`
+
+Health probing is split by cost, because the two questions differ:
+
+| Depth | Cost | Answers |
+|---|---|---|
+| Routability | free | Does the node still dispatch to this miner? A `402` proves it |
+| Liveness | ~0.01 USDC | Does the upstream behind it actually answer? |
+
+Routability sweeps the whole catalog in batches of 8; liveness rotates through
+`PULSE_DEEP_PER_CYCLE` miners per cycle, chosen by the hour so coverage is even
+without persisting a cursor. Real app traffic from the ledger folds into the
+liveness figure, since a paid call that worked is the strongest evidence there
+is.
+
+`state` is derived: `healthy` at ≥80% live uptime over ≥2 live samples,
+`degraded` below that, `down` at zero, and `unknown` when only routability is
+known. A miner that is routable but never proven is honestly labelled unknown
+rather than assumed healthy.
+
+Pulse runs on its own cron. Combined with the oracle cycle it would exceed the
+60s serverless ceiling (~40s + ~23s).
+
+## 11c. Claim permalinks
+
+Every `verifyClaim` result is persisted as a `StoredClaim` and served at
+`/c/[id]` with its own OG card. A verdict that lives only in an HTTP response
+cannot be cited or argued with; a URL can.
+
 ## 12. Security
 
 - Server holds `EVM_PRIVATE_KEY`. Use a **burner** funded only for the demo.  
@@ -317,7 +354,7 @@ on both axes:
   multicast hosts. Validation runs at registration **and** again at delivery,
   and `redirect: "error"` stops a public URL bouncing to an internal one.
   `ALLOW_INSECURE_WEBHOOKS=true` disables both checks and is local-only.
-- Deliveries are signed with `X-Signal-Arena-Signature: sha256=<hmac>` over the
+- Deliveries are signed with `X-Xyle-Signature: sha256=<hmac>` over the
   raw body using `WEBHOOK_SECRET` (falls back to `SESSION_SECRET`).
 - Webhook sends are **awaited**. A serverless function can freeze the moment it
   returns, so fire-and-forget delivery silently never arrives in production.
@@ -361,4 +398,4 @@ src/components/Toast.tsx          toast provider
 src/app/ledger                    demand UI
 ```
 
-For user-facing setup and walkthroughs, see **[README.md](./README.md)**.
+For user-facing setup and walkthroughs, see **[Usage](./usage.md)**.

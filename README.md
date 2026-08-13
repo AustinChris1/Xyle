@@ -1,4 +1,4 @@
-# Signal Arena
+# Xyle
 
 **A verifiable multi-miner oracle on [Telegraph Protocol](https://telegraphprotocol.com), with markets and an adversary game as demos of the same rail.**
 
@@ -9,6 +9,70 @@ Hackathon: [Telegraph Season I](https://hackathon.telegraphprotocol.com) · Appl
 | A receipted oracle: news + authenticity + dual judges | A human-resolved prediction market |
 | Paid per reading via x402 (Base Sepolia USDC) | Free unlimited API access |
 | Infrastructure others can call (`POST /api/oracle/verify`) | Only a UI for three seeded questions |
+
+---
+
+## Documentation
+
+Everything lives in [`docs/`](./docs) as plain markdown, and the same files are
+rendered by the app at **`/docs`** so a visitor never has to open GitHub.
+
+| Doc | Read it for |
+|---|---|
+| [Overview](./docs/overview.md) | What this is, the problem it solves, and where to go next |
+| [How it works](./docs/how-it-works.md) | The use case, told through one real user, and what the four stages actually do |
+| [Usage](./docs/usage.md) | Every page in the app, what it is for, and what to click |
+| [Architecture](./docs/architecture.md) | Internals: modules, data flow, persistence, failure handling |
+| [Keys](./docs/keys.md) | Wallets, the payment network, and funding a burner |
+
+New here? Start with **Overview**, which is what `/docs` opens on.
+
+---
+
+## Surfaces
+
+| Surface | What it is |
+|---|---|
+| **`/verify`** | Check any claim. Returns a permanent link with dated sources, both judges, and on-chain receipts |
+| **`/c/[id]`** | The permalink. Every verification is a citable page with its own share card |
+| **`/pulse`** | Live health for all 40 miners in the Telegraph catalog, plus embeddable badges |
+| **`/badge/[id].svg`** | Status badge a miner operator can drop in their README |
+| **`/calibration`** | The oracle's own track record: when it says 80%, is it right 80% of the time |
+| **`/ledger`** | Every paid miner call: who, cost, latency, receipt |
+| **`/api/mcp`** | MCP server, so an agent can verify a claim before acting on it |
+| `/markets`, `/challenge` | Two consumers of the same rail |
+
+### Pulse, and why it matters
+
+Because Xyle actually pays these miners for real work, it accumulates something
+nobody else has: a measured record of which parts of Telegraph function.
+
+Two independent signals, deliberately not collapsed into one number:
+
+- **Routable** — free. An unpaid request returns `402 Payment Required`, so the
+  node still dispatches to that miner. Runs over the whole catalog every cycle.
+- **Live** — costs ~0.01 USDC. Actually pay and see whether the upstream
+  answers. A rotating handful per cycle, plus every real call the app makes.
+
+The gap between them is the whole point. Miner 109 stayed *routable* for weeks
+while its upstream Gemini quota was exhausted, and miner 202 currently reads
+**routable 100%, live 50%**. A single uptime number would hide both.
+
+Miner operators can embed their own badge:
+
+```markdown
+![Telegraph miner 202](https://your-app/badge/202.svg)
+```
+
+### MCP
+
+```json
+{ "mcpServers": { "xyle": { "url": "https://your-app/api/mcp" } } }
+```
+
+Tools: `verify_claim`, `get_miner_health`, `get_claim`. The instruction given to
+clients is that `uncertain` means *do not act* — the point of an agent guardrail
+is that it refuses rather than guesses.
 
 ---
 
@@ -113,7 +177,7 @@ Request:
 ```http
 POST <your url>
 Content-Type: application/json
-X-Signal-Arena-Signature: sha256=<hmac-sha256 of the raw body>
+X-Xyle-Signature: sha256=<hmac-sha256 of the raw body>
 
 {
   "type": "market.settled",
@@ -162,7 +226,7 @@ personal webhook and every agent have a **Send test event** button on `/desk`.
    agent with any name.
 4. Press the ⚡ **Send test event** button.
 5. The webhook.site tab shows the POST instantly, including the
-   `X-Signal-Arena-Signature` header.
+   `X-Xyle-Signature` header.
 
 Any URL that accepts a POST works the same way: a Pipedream or RequestBin
 endpoint, a Zapier or Make catch hook, an n8n webhook node, or your own server.
@@ -203,7 +267,7 @@ Share cards use your handle, e.g. `@alice · market settled YES @ 85%`.
 
 ## Auto market postings
 
-**Yes.** When the cron job runs, Signal Arena:
+**Yes.** When the cron job runs, Xyle:
 
 1. Searches live news (Tavily) for high-signal topics (exploits, flight chaos, contradicted crypto claims).
 2. Asks a chat miner to turn that into short **yes/no market questions**.
@@ -280,6 +344,16 @@ stays alive up to `maxDuration`. Measured: **HTTP 202 in 80ms**, cycle finishes
 {"ok":true,"mode":"scheduled","willTick":2,"openMarkets":18,
  "spentUsdcLast24h":2.95,"capUsdc":5}
 ```
+
+**Two schedules.** The oracle cycle (~40s) and Pulse (~23s) together exceed the
+60s function ceiling, so they are separate endpoints:
+
+| Endpoint | Does | Suggested cadence |
+|---|---|---|
+| `/api/cron/oracle` | Auto-markets + readings | hourly |
+| `/api/cron/pulse` | Catalog health probing | hourly |
+
+Both take the same `CRON_SECRET` and both answer in milliseconds via `after()`.
 
 **A. Locally, one manual cycle.** Add `sync=1` to run inline and see results:
 
@@ -363,7 +437,7 @@ Then fund the printed **Base Sepolia** address:
 Payment network expected by the live node: **`eip155:84532`** (Base Sepolia).  
 Solana SOL alone does **not** pay these miner calls.
 
-Details: [KEYS.md](./KEYS.md)
+Details: [docs/keys.md](./docs/keys.md)
 
 ### Environment (minimum)
 
@@ -479,8 +553,8 @@ Set the same env vars in the Vercel project. Add Turso for durable state. Arm cr
 | `POST` | `/api/me/webhooks/test` | Send a sample event to an endpoint |
 | `POST` | `/api/me/watchlist` | Toggle a watched market |
 
-In-depth design: **[ARCHITECTURE.md](./ARCHITECTURE.md)**  
-Wallets and payment network: **[KEYS.md](./KEYS.md)**
+In-depth design: **[docs/architecture.md](./docs/architecture.md)**  
+Wallets and payment network: **[docs/keys.md](./docs/keys.md)**
 
 ---
 

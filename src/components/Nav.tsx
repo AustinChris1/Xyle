@@ -2,93 +2,189 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { SignalMark } from "./brand/SignalMark";
+import { XyleMark } from "./brand/XyleMark";
 import { ThemeToggle } from "./ThemeToggle";
 import { ConnectWallet } from "./ConnectWallet";
+import { ChevronDownIcon } from "./Icon";
 
-const links = [
+/**
+ * Seven equal links taught nobody what this app is for. They are grouped now:
+ * the two things you come here to do stay in the bar, and everything that
+ * exists to prove the app works moves behind one menu.
+ */
+const primary = [
+  { href: "/verify", label: "Verify" },
   { href: "/markets", label: "Markets" },
-  { href: "/challenge", label: "Adversary" },
-  { href: "/desk", label: "Desk" },
-  { href: "/ledger", label: "Ledger" },
-  { href: "/leaderboard", label: "Board" },
 ];
+
+const proof = {
+  label: "Evidence",
+  hint: "Whether any of this can be trusted",
+  items: [
+    { href: "/pulse", label: "Pulse", hint: "Which miners actually work" },
+    { href: "/calibration", label: "Calibration", hint: "Is the confidence real" },
+    { href: "/ledger", label: "Ledger", hint: "Every call, every cent" },
+  ],
+};
+
+const play = {
+  label: "Play",
+  hint: "Same engine, for sport",
+  items: [
+    { href: "/challenge", label: "Break it", hint: "Try to make the oracle lie" },
+    { href: "/leaderboard", label: "Leaderboard", hint: "Who calls it right" },
+  ],
+};
+
+const groups = [proof, play];
+const trailing = [{ href: "/docs", label: "Docs" }];
 
 export function Nav() {
   const path = usePathname();
   const reduce = useReducedMotion();
-  // The drawer remembers which route it was opened on, so any navigation
-  // (including browser back) closes it by derivation rather than an effect.
+
+  // Both menus remember the route they opened on, so any navigation
+  // (including browser back) closes them by derivation rather than an effect.
   const [openAt, setOpenAt] = useState<string | null>(null);
+  const [menuAt, setMenuAt] = useState<string | null>(null);
   const open = openAt !== null && openAt === path;
+  const menu = menuAt !== null && menuAt.endsWith(`@${path}`) ? menuAt.split("@")[0] : null;
   const setOpen = (next: boolean) => setOpenAt(next ? path : null);
+  const setMenu = (label: string | null) =>
+    setMenuAt(label ? `${label}@${path}` : null);
+
+  const barRef = useRef<HTMLDivElement>(null);
 
   // Lock scroll and allow Escape while the drawer is open
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpenAt(null);
-    };
-    document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
-      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open && !menu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpenAt(null);
+      setMenuAt(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, menu]);
+
+  // A dropdown left open while the pointer wanders elsewhere is noise.
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!barRef.current?.contains(e.target as Node)) setMenuAt(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menu]);
+
   const isActive = (href: string) => path === href || path.startsWith(href + "/");
+  const groupActive = (items: { href: string }[]) => items.some((i) => isActive(i.href));
 
   return (
-    <header className="sticky top-0 z-50 border-b border-line bg-background/80 backdrop-blur-xl">
-      <div className="relative z-50 mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+    <header className="sticky top-0 z-50 border-b border-line bg-background/95 backdrop-blur-sm">
+      <div
+        ref={barRef}
+        className="relative z-50 mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3"
+      >
         <Link href="/" className="group flex shrink-0 items-center gap-2.5">
           <motion.span
-            whileHover={reduce ? undefined : { rotate: 24, scale: 1.06 }}
+            whileHover={reduce ? undefined : { rotate: 18 }}
             whileTap={{ scale: 0.94 }}
             transition={{ type: "spring", stiffness: 300, damping: 18 }}
-            className="flex text-copper"
+            className="flex text-signal"
           >
-            <SignalMark size={32} />
+            <XyleMark size={30} />
           </motion.span>
           <div className="leading-tight">
             <div className="text-[15px] font-semibold tracking-tight text-ink">
-              Signal Arena
+              Xyle
             </div>
-            <div className="hidden font-mono text-[9px] uppercase tracking-[0.22em] text-muted sm:block">
-              Verifiable oracle · 4 miners
+            <div className="hidden font-mono text-[9px] uppercase tracking-[0.2em] text-faint sm:block">
+              Verified answers, with receipts
             </div>
           </div>
         </Link>
 
         {/* Desktop */}
-        <nav className="hidden items-center gap-1 lg:flex">
-          {links.map((l) => {
-            const active = isActive(l.href);
+        <nav className="hidden items-center gap-0.5 lg:flex">
+          {primary.map((l) => (
+            <NavLink key={l.href} {...l} active={isActive(l.href)} />
+          ))}
+
+          {groups.map((g) => {
+            const active = groupActive(g.items);
+            const isOpen = menu === g.label;
             return (
-              <Link
-                key={l.href}
-                href={l.href}
-                aria-current={active ? "page" : undefined}
-                className={`relative rounded px-3 py-1.5 text-sm transition-colors ${
-                  active ? "text-copper-hot" : "text-muted hover:text-ink"
-                }`}
-              >
-                {active && (
+              <div key={g.label} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenu(isOpen ? null : g.label)}
+                  aria-expanded={isOpen}
+                  aria-haspopup="true"
+                  className={`flex items-center gap-1 px-3 py-1.5 text-sm transition-colors ${
+                    active || isOpen ? "text-signal" : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {g.label}
                   <motion.span
-                    layoutId="nav-pill"
-                    className="absolute inset-0 -z-10 rounded border border-copper/25 bg-copper/10"
-                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                  />
-                )}
-                {l.label}
-              </Link>
+                    animate={{ rotate: isOpen ? 180 : 0 }}
+                    transition={{ duration: 0.16 }}
+                    className="flex"
+                  >
+                    <ChevronDownIcon size={13} />
+                  </motion.span>
+                </button>
+
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.14 }}
+                      className="absolute right-0 top-full z-50 mt-2 w-64 border border-line bg-surface"
+                    >
+                      <p className="border-b border-line px-3 py-2 font-mono text-[9px] uppercase tracking-[0.2em] text-faint">
+                        {g.hint}
+                      </p>
+                      {g.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setMenu(null)}
+                          className={`block border-b border-line px-3 py-2.5 last:border-b-0 transition-colors hover:bg-sunken ${
+                            isActive(item.href) ? "text-signal" : "text-ink"
+                          }`}
+                        >
+                          <span className="block text-sm">{item.label}</span>
+                          <span className="mt-0.5 block text-xs text-faint">
+                            {item.hint}
+                          </span>
+                        </Link>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
           })}
-          <span className="mx-1 h-5 w-px bg-line" />
+
+          {trailing.map((l) => (
+            <NavLink key={l.href} {...l} active={isActive(l.href)} />
+          ))}
+
+          <span className="mx-2 h-4 w-px bg-line" />
           <ConnectWallet />
           <ThemeToggle />
         </nav>
@@ -102,33 +198,33 @@ export function Nav() {
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             aria-controls="mobile-nav"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-ink transition-colors hover:border-copper/40 hover:text-copper-hot"
+            className="flex h-9 w-9 items-center justify-center border border-line text-ink transition-colors hover:border-signal hover:text-signal"
           >
             <span className="sr-only">Menu</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
               <motion.path
                 d="M3 6h18"
                 stroke="currentColor"
                 strokeWidth="2"
-                strokeLinecap="round"
+                strokeLinecap="square"
                 animate={open ? { d: "M5 5l14 14" } : { d: "M3 6h18" }}
-                transition={{ duration: 0.22 }}
+                transition={{ duration: 0.2 }}
               />
               <motion.path
                 d="M3 12h18"
                 stroke="currentColor"
                 strokeWidth="2"
-                strokeLinecap="round"
+                strokeLinecap="square"
                 animate={{ opacity: open ? 0 : 1 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.12 }}
               />
               <motion.path
                 d="M3 18h18"
                 stroke="currentColor"
                 strokeWidth="2"
-                strokeLinecap="round"
+                strokeLinecap="square"
                 animate={open ? { d: "M5 19l14 -14" } : { d: "M3 18h18" }}
-                transition={{ duration: 0.22 }}
+                transition={{ duration: 0.2 }}
               />
             </svg>
           </button>
@@ -146,66 +242,119 @@ export function Nav() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setOpen(false)}
-              className="fixed inset-0 z-40 cursor-default bg-black/50 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-40 cursor-default bg-black/60 lg:hidden"
             />
             <motion.nav
               id="mobile-nav"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.26, ease: [0.22, 0.61, 0.36, 1] }}
-              className="relative z-50 overflow-hidden border-t border-line bg-background/95 backdrop-blur-xl lg:hidden"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: [0.2, 0.8, 0.3, 1] }}
+              className="relative z-50 max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-line bg-background lg:hidden"
             >
-              <motion.ul
-                initial="hidden"
-                animate="show"
-                variants={{
-                  hidden: {},
-                  show: { transition: { staggerChildren: 0.045, delayChildren: 0.04 } },
-                }}
-                className="mx-auto max-w-6xl space-y-1 px-4 py-4"
-              >
-                {links.map((l) => {
-                  const active = isActive(l.href);
-                  return (
-                    <motion.li
+              <div className="mx-auto max-w-6xl px-4 py-4">
+                {/* The two things you actually came to do, given real weight. */}
+                <div className="grid grid-cols-2 gap-2">
+                  {primary.map((l) => (
+                    <Link
                       key={l.href}
-                      variants={{
-                        hidden: { opacity: 0, x: -12 },
-                        show: { opacity: 1, x: 0 },
-                      }}
+                      href={l.href}
+                      onClick={() => setOpen(false)}
+                      className={`border px-4 py-4 text-base transition-colors ${
+                        isActive(l.href)
+                          ? "border-signal bg-signal/10 text-signal"
+                          : "border-line text-ink hover:border-signal"
+                      }`}
                     >
-                      <Link
-                        href={l.href}
-                        aria-current={active ? "page" : undefined}
-                        className={`flex items-center justify-between rounded-lg border px-4 py-3 text-base transition-colors ${
-                          active
-                            ? "border-copper/30 bg-copper/10 text-copper-hot"
-                            : "border-transparent text-muted hover:bg-copper/5 hover:text-ink"
-                        }`}
-                      >
-                        {l.label}
-                        {active && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-copper-hot" />
-                        )}
-                      </Link>
-                    </motion.li>
-                  );
-                })}
-                <motion.li
-                  variants={{
-                    hidden: { opacity: 0, x: -12 },
-                    show: { opacity: 1, x: 0 },
-                  }}
-                  className="border-t border-line pt-3"
-                >
-                  <ConnectWallet />
-                </motion.li>
-              </motion.ul>
+                      {l.label}
+                    </Link>
+                  ))}
+                </div>
+
+                {groups.map((g) => (
+                  <div key={g.label} className="mt-5">
+                    <p className="section-rule mb-2">{g.label}</p>
+                    <ul>
+                      {g.items.map((item) => (
+                        <li key={item.href}>
+                          <Link
+                            href={item.href}
+                            onClick={() => setOpen(false)}
+                            className={`flex items-baseline justify-between gap-3 border-b border-line py-2.5 transition-colors ${
+                              isActive(item.href)
+                                ? "text-signal"
+                                : "text-ink hover:text-signal"
+                            }`}
+                          >
+                            <span className="text-sm">{item.label}</span>
+                            <span className="text-right text-xs text-faint">
+                              {item.hint}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+
+                <div className="mt-5">
+                  <p className="section-rule mb-2">Account</p>
+                  <Link
+                    href="/desk"
+                    onClick={() => setOpen(false)}
+                    className={`flex border-b border-line py-2.5 text-sm transition-colors ${
+                      isActive("/desk") ? "text-signal" : "text-ink hover:text-signal"
+                    }`}
+                  >
+                    Desk
+                  </Link>
+                  <Link
+                    href="/docs"
+                    onClick={() => setOpen(false)}
+                    className={`flex border-b border-line py-2.5 text-sm transition-colors ${
+                      isActive("/docs") ? "text-signal" : "text-ink hover:text-signal"
+                    }`}
+                  >
+                    Docs
+                  </Link>
+                  <div className="pt-4">
+                    <ConnectWallet />
+                  </div>
+                </div>
+              </div>
             </motion.nav>
           </>
         )}
       </AnimatePresence>
     </header>
+  );
+}
+
+function NavLink({
+  href,
+  label,
+  active,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`relative px-3 py-1.5 text-sm transition-colors ${
+        active ? "text-signal" : "text-muted hover:text-ink"
+      }`}
+    >
+      {active && (
+        <motion.span
+          layoutId="nav-underline"
+          className="absolute inset-x-2 -bottom-[13px] h-px bg-signal"
+          transition={{ type: "spring", stiffness: 420, damping: 34 }}
+        />
+      )}
+      {label}
+    </Link>
   );
 }

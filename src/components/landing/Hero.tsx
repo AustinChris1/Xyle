@@ -1,46 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
-import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
-import { SignalMark } from "@/components/brand/SignalMark";
+import { motion, useReducedMotion } from "framer-motion";
 import { ease } from "@/lib/motion";
+import { ArrowRightIcon } from "@/components/Icon";
 
 const HEADLINE = [
-  [{ t: "Markets that settle" }],
-  [{ t: "when the " }, { t: "evidence", accent: true }],
-  [{ t: "checks out." }],
+  [{ t: "Answers you can" }],
+  [{ t: "check", accent: true }, { t: ", not" }],
+  [{ t: "answers you trust." }],
+];
+
+/**
+ * A specimen receipt rather than an abstract graphic. The product's entire
+ * argument is "here is the paper trail", so the hero shows one.
+ */
+const RECEIPT = [
+  { k: "CLAIM", v: "Major DeFi lending protocol exploited" },
+  { k: "VERDICT", v: "SUPPORTED", tone: "yes" as const },
+  { k: "CONFIDENCE", v: "88%" },
+  { k: "EVIDENCE", v: "4 sources · newest 6h old" },
+  { k: "AUTHENTICITY", v: "clean" },
+  { k: "JUDGE A", v: "yes · 0.91" },
+  { k: "JUDGE B", v: "yes · 0.85" },
+  { k: "PAID", v: "0.0400 USDC" },
+  { k: "RECEIPT", v: "0x7a3f…c2e1" },
 ];
 
 export function Hero() {
-  const ref = useRef<HTMLElement>(null);
   const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end start"],
-  });
-
-  const markY = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : 70]);
-  const markFade = useTransform(scrollYProgress, [0, 0.85], [1, 0.15]);
-  const copyY = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : 26]);
 
   return (
-    <section
-      ref={ref}
-      className="panel relative overflow-hidden rounded-2xl px-5 py-10 sm:px-10 sm:py-16 lg:py-20"
-    >
-      <div className="relative grid items-center gap-10 sm:gap-12 lg:grid-cols-[1.15fr_0.85fr]">
-        <motion.div style={{ y: copyY }}>
+    <section className="glass relative overflow-hidden px-5 py-10 sm:px-10 sm:py-14 lg:py-16">
+      <div className="relative grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+        <div>
           <motion.p
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease }}
             className="eyebrow"
           >
-            Evidence-settled prediction markets
+            Multi-miner verification oracle
           </motion.p>
 
-          <h1 className="mt-4 text-[2rem] font-semibold leading-[1.08] tracking-tight sm:mt-5 sm:text-5xl lg:text-6xl">
+          <h1 className="mt-4 text-[2rem] font-semibold leading-[1.08] tracking-tight sm:mt-5 sm:text-5xl lg:text-[3.4rem]">
             {HEADLINE.map((line, li) => (
               <span key={li} className="block overflow-hidden">
                 <motion.span
@@ -48,16 +51,13 @@ export function Hero() {
                   initial={{ y: "108%" }}
                   animate={{ y: 0 }}
                   transition={{
-                    duration: 0.75,
-                    delay: 0.12 + li * 0.09,
+                    duration: 0.72,
+                    delay: 0.1 + li * 0.08,
                     ease: [0.16, 1, 0.3, 1],
                   }}
                 >
                   {line.map((part, pi) => (
-                    <span
-                      key={pi}
-                      className={part.accent ? "text-copper-hot" : undefined}
-                    >
+                    <span key={pi} className={part.accent ? "text-signal" : undefined}>
                       {part.t}
                     </span>
                   ))}
@@ -69,78 +69,83 @@ export function Hero() {
           <motion.p
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.42, ease }}
+            transition={{ duration: 0.6, delay: 0.4, ease }}
             className="mt-5 max-w-xl leading-relaxed text-muted sm:mt-6 sm:text-lg"
           >
-            Take a side on a claim. When the oracle runs, it gathers live
-            coverage, scores it for authenticity, and reasons over what
-            survives. Clear the bar and the pot pays out on its own.
+            Four independent miners check a claim. Two judges have to agree
+            before it says yes, and when they disagree it refuses to answer.
+            Every source is dated, every payment has a receipt.
           </motion.p>
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.52, ease }}
+            transition={{ duration: 0.6, delay: 0.5, ease }}
             className="mt-7 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap"
           >
-            <Link href="/markets" className="btn-primary justify-center text-sm">
-              Browse open markets
+            <Link href="/verify" className="btn-primary justify-center">
+              Check a claim <ArrowRightIcon size={15} />
             </Link>
-            <Link href="/challenge" className="btn-ghost justify-center text-sm">
-              Try to fool the oracle
+            <Link href="/docs" className="btn-ghost justify-center">
+              How it works
             </Link>
           </motion.div>
 
           <motion.ul
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.72 }}
-            className="mt-8 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint sm:mt-10 sm:gap-x-6"
+            transition={{ duration: 0.6, delay: 0.7 }}
+            className="mt-8 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint sm:mt-10"
           >
-            <li>No moderator</li>
-            <li>Four independent miners</li>
-            <li>Every verdict receipted</li>
+            <li>No single model</li>
+            <li>Dated sources</li>
+            <li>On-chain receipts</li>
+            <li>Refuses when unsure</li>
           </motion.ul>
-        </motion.div>
+        </div>
 
+        {/* Specimen receipt */}
         <motion.div
-          style={{ y: markY, opacity: markFade }}
-          className="relative mx-auto flex aspect-square w-full max-w-[190px] items-center justify-center sm:max-w-[240px] lg:max-w-[320px]"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.3, ease }}
+          className="border border-line bg-sunken"
         >
-          {/* orbit rings */}
-          {[0, 1].map((i) => (
-            <motion.span
-              key={i}
-              className="absolute rounded-full border border-dashed border-copper/20"
-              style={{
-                width: `${72 + i * 22}%`,
-                height: `${72 + i * 22}%`,
-              }}
-              animate={reduce ? undefined : { rotate: i === 0 ? 360 : -360 }}
-              transition={{
-                duration: 46 + i * 24,
-                repeat: Infinity,
-                ease: "linear",
-              }}
-            />
-          ))}
+          <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
+              Specimen verdict
+            </span>
+            <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-yes" />
+              settled
+            </span>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.9, delay: 0.2, ease }}
-            className="relative text-copper"
-          >
-            {/* CSS wins over the SVG width/height attributes, so the mark
-                tracks its container instead of needing a resize listener. */}
-            <SignalMark
-              size={220}
-              animated
-              idle
-              gradient
-              className="h-[120px] w-[120px] sm:h-[152px] sm:w-[152px] lg:h-[200px] lg:w-[200px]"
-            />
-          </motion.div>
+          <dl className="px-4 py-1">
+            {RECEIPT.map((row, i) => (
+              <motion.div
+                key={row.k}
+                initial={reduce ? undefined : { opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.35, delay: 0.5 + i * 0.055, ease }}
+                className="kv"
+              >
+                <dt>{row.k}</dt>
+                <dd
+                  className={`font-mono text-[13px] ${
+                    row.tone === "yes" ? "font-semibold text-yes" : ""
+                  }`}
+                >
+                  {row.v}
+                </dd>
+              </motion.div>
+            ))}
+          </dl>
+
+          <div className="border-t border-line px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
+            Every verdict gets a page like this
+            <span className="caret ml-1 text-signal">_</span>
+          </div>
         </motion.div>
       </div>
     </section>

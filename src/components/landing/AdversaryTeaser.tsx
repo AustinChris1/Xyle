@@ -24,7 +24,7 @@ export function AdversaryTeaser() {
       className="panel-hot grid gap-8 rounded-2xl p-6 sm:p-9 md:grid-cols-[1fr_auto] md:items-center"
     >
       <div>
-        <p className="eyebrow">Adversary mode</p>
+        <p className="eyebrow">Red team</p>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
           Think you can break it? Everyone gets a turn.
         </h2>

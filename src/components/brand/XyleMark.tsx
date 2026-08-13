@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 
 /**
- * The Signal Arena mark.
+ * The Xyle mark.
  *
  * A settlement seal: a segmented ring with three tapered signals entering
  * through its gaps and converging on a single node. The three signals are the
@@ -29,13 +29,13 @@ const RAYS = [
   "M11.81 39.04L15.81 45.96L25.67 37.04L24.47 34.96Z",
 ];
 
-export function SignalMark({
+export function XyleMark({
   size = 40,
   animated = false,
   idle = false,
   gradient = false,
   className,
-  title = "Signal Arena",
+  title = "Xyle",
 }: {
   size?: number;
   /** Plays the convergence sequence on mount. */
@@ -49,7 +49,7 @@ export function SignalMark({
   const reduce = useReducedMotion();
   const play = animated && !reduce;
   const drift = idle && !reduce;
-  const id = gradient ? "signal-mark-gradient" : undefined;
+  const id = gradient ? "xyle-mark-gradient" : undefined;
   const stroke = id ? `url(#${id})` : "currentColor";
 
   return (

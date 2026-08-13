@@ -73,7 +73,7 @@ export function useAuth() {
         domain,
         address: signer,
         statement:
-          "Sign in to Signal Arena. This proves wallet ownership. Miner fees stay on the app server.",
+          "Sign in to Xyle. This proves wallet ownership. Miner fees stay on the app server.",
         uri: origin,
         version: "1",
         chainId: override?.chainId ?? chainId ?? 84532,

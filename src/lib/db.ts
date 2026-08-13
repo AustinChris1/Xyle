@@ -2,6 +2,7 @@ import { loadConfig } from "./config";
 import {
   backendLabel,
   emptyStore,
+  flushSaves,
   loadPersisted,
   queueSave,
   type PersistedStore,
@@ -13,26 +14,34 @@ import type {
   ConsumptionEntry,
   LeaderboardEntry,
   Market,
+  MinerHealth,
+  MinerProbe,
   OracleTick,
   Forecast,
+  StoredClaim,
   UserAlert,
   UserProfile,
 } from "./types";
 
 const globalForDb = globalThis as unknown as {
-  __signalArenaStore?: PersistedStore;
-  __signalArenaReady?: Promise<void>;
+  __xyleStore?: PersistedStore;
+  __xyleReady?: Promise<void>;
+  __xyleReloadedAt?: number;
+  __xyleReloading?: Promise<void>;
 };
+
+/** How often a cache miss is allowed to re-read the store. See reloadStore. */
+const RELOAD_THROTTLE_MS = 750;
 
 function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
 }
 
 async function ensureReady() {
-  if (!globalForDb.__signalArenaReady) {
-    globalForDb.__signalArenaReady = (async () => {
+  if (!globalForDb.__xyleReady) {
+    globalForDb.__xyleReady = (async () => {
       const loaded = await loadPersisted();
-      globalForDb.__signalArenaStore = loaded;
+      globalForDb.__xyleStore = loaded;
       if (!loaded.seeded) {
         seed(loaded);
         loaded.seeded = true;
@@ -45,14 +54,52 @@ async function ensureReady() {
       }
     })();
   }
-  await globalForDb.__signalArenaReady;
+  await globalForDb.__xyleReady;
+}
+
+/**
+ * Drops the cached store and reads it back from the database.
+ *
+ * The store is loaded once per instance and held in a module global, which is
+ * what makes every other read free. The cost is that a warm instance never sees
+ * writes made by a different one, so only the paths where that staleness is
+ * user-visible pay for a reload.
+ *
+ * Pending writes are flushed first: the queue holds a reference to the current
+ * store object, and swapping it out with a save still queued would write the
+ * old snapshot over newer data.
+ */
+async function reloadStore() {
+  // Callers reload on a cache miss, and a miss is also what a bogus id
+  // produces, so this needs a guard against unbounded reads. It has to stay
+  // short: the permalink is opened about a second after the write, and a
+  // reload skipped in that window is the 404 this exists to prevent.
+  //
+  // What it actually collapses is the burst. /c/[id] asks twice per render
+  // (generateMetadata, then the page body) milliseconds apart, and concurrent
+  // requests share the in-flight read rather than each issuing their own.
+  const now = Date.now();
+  if (now - (globalForDb.__xyleReloadedAt ?? 0) < RELOAD_THROTTLE_MS) {
+    await globalForDb.__xyleReloading;
+    return;
+  }
+  globalForDb.__xyleReloadedAt = now;
+
+  globalForDb.__xyleReloading = (async () => {
+    await flushSaves();
+    globalForDb.__xyleReady = undefined;
+    globalForDb.__xyleStore = undefined;
+    await ensureReady();
+  })();
+
+  await globalForDb.__xyleReloading;
 }
 
 function store(): PersistedStore {
-  if (!globalForDb.__signalArenaStore) {
-    globalForDb.__signalArenaStore = emptyStore();
+  if (!globalForDb.__xyleStore) {
+    globalForDb.__xyleStore = emptyStore();
   }
-  return globalForDb.__signalArenaStore;
+  return globalForDb.__xyleStore;
 }
 
 function persist() {
@@ -419,6 +466,167 @@ export const db = {
       .sort((a, b) => b.calls - a.calls);
   },
 
+  /**
+   * Stores a verification so it can be linked at /c/[id].
+   * Capped, oldest dropped, since the store is one JSON blob.
+   */
+  async saveClaim(input: Omit<StoredClaim, "id" | "at">): Promise<StoredClaim> {
+    await ensureReady();
+    const s = store();
+    if (!s.claims) s.claims = [];
+    const claim: StoredClaim = {
+      ...input,
+      id: uid("c"),
+      at: new Date().toISOString(),
+    };
+    s.claims.unshift(claim);
+    if (s.claims.length > 500) s.claims.length = 500;
+    // Awaited, not fire-and-forget. Every caller hands the id straight back to
+    // a client that immediately navigates to /c/<id>, which is served by a
+    // different serverless instance reading from the database. If this write is
+    // still queued when the function freezes, the permalink 404s.
+    persist();
+    await flushSaves();
+    return claim;
+  },
+
+  async getClaim(id: string): Promise<StoredClaim | undefined> {
+    await ensureReady();
+    const hit = (store().claims || []).find((c) => c.id === id);
+    if (hit) return hit;
+
+    // A permalink is normally opened a second after the claim was written, and
+    // often by a different instance whose store predates that write. A miss
+    // here is not proof of absence, so reload once before returning nothing.
+    // Without this the page 404s on a verification that plainly succeeded.
+    await reloadStore();
+    return (store().claims || []).find((c) => c.id === id);
+  },
+
+  async listClaims(limit = 50): Promise<StoredClaim[]> {
+    await ensureReady();
+    return [...(store().claims || [])].slice(0, limit);
+  },
+
+  async recordProbes(probes: MinerProbe[]) {
+    await ensureReady();
+    const s = store();
+    if (!s.probes) s.probes = [];
+    s.probes.unshift(...probes);
+    // Roughly a week of hourly probes across the catalog.
+    if (s.probes.length > 4000) s.probes.length = 4000;
+    persist();
+  },
+
+  /**
+   * Rolling health per miner.
+   *
+   * Two independent signals, because they answer different questions:
+   * routability (free 402 checks) says the node still dispatches to a miner;
+   * liveness (paid probes plus real app traffic) says the upstream behind it
+   * actually answers. Miner 109 was routable for weeks while its Gemini quota
+   * was exhausted, so collapsing these into one number would have hidden it.
+   */
+  async minerHealth(
+    catalog: Array<{ id: string; slug: string; name: string; kind: string }>
+  ): Promise<MinerHealth[]> {
+    await ensureReady();
+    const s = store();
+    const probes = s.probes || [];
+    const ledger = s.consumption || [];
+
+    const byId = new Map<string, MinerHealth>();
+    for (const c of catalog) {
+      byId.set(String(c.id), {
+        minerId: String(c.id),
+        slug: c.slug,
+        name: c.name,
+        kind: c.kind,
+        routableProbes: 0,
+        routableOk: 0,
+        routableUptime: 0,
+        liveProbes: 0,
+        liveOk: 0,
+        liveUptime: 0,
+        p50LatencyMs: 0,
+        paidCalls: 0,
+        paidFailures: 0,
+        state: "unknown",
+      });
+    }
+
+    const latencies = new Map<string, number[]>();
+
+    for (const p of probes) {
+      const h = byId.get(p.minerId);
+      if (!h) continue;
+
+      if (p.paid) {
+        h.liveProbes += 1;
+        if (p.ok) h.liveOk += 1;
+      } else {
+        h.routableProbes += 1;
+        if (p.ok) h.routableOk += 1;
+      }
+
+      if (p.ok) {
+        if (!h.lastOk || p.at > h.lastOk) h.lastOk = p.at;
+        if (p.paid) {
+          const arr = latencies.get(p.minerId) || [];
+          arr.push(p.latencyMs);
+          latencies.set(p.minerId, arr);
+        }
+      } else {
+        if (!h.lastFail || p.at > h.lastFail) {
+          h.lastFail = p.at;
+          h.lastError = p.error || `HTTP ${p.status ?? "?"}`;
+        }
+      }
+    }
+
+    // Real traffic is the strongest liveness evidence we have.
+    for (const c of ledger) {
+      const h = byId.get(c.minerId);
+      if (!h) continue;
+      h.paidCalls += 1;
+      h.liveProbes += 1;
+      if (c.success) {
+        h.liveOk += 1;
+        const arr = latencies.get(c.minerId) || [];
+        arr.push(c.latencyMs);
+        latencies.set(c.minerId, arr);
+      } else {
+        h.paidFailures += 1;
+        if (!h.lastFail || c.at > h.lastFail) h.lastFail = c.at;
+      }
+    }
+
+    for (const h of byId.values()) {
+      h.routableUptime =
+        h.routableProbes > 0 ? h.routableOk / h.routableProbes : 0;
+      h.liveUptime = h.liveProbes > 0 ? h.liveOk / h.liveProbes : 0;
+
+      const arr = (latencies.get(h.minerId) || []).sort((a, b) => a - b);
+      h.p50LatencyMs = arr.length ? arr[Math.floor(arr.length / 2)]! : 0;
+
+      if (h.liveProbes >= 2) {
+        h.state =
+          h.liveUptime >= 0.8
+            ? "healthy"
+            : h.liveUptime > 0
+              ? "degraded"
+              : "down";
+      } else if (h.routableProbes > 0) {
+        // Routable but unproven: the best we can honestly say.
+        h.state = h.routableUptime >= 0.5 ? "unknown" : "down";
+      } else {
+        h.state = "unknown";
+      }
+    }
+
+    return [...byId.values()];
+  },
+
   async pushActivity(item: Omit<ActivityItem, "id" | "at">) {
     await ensureReady();
     const s = store();
@@ -445,10 +653,13 @@ export const db = {
       .slice(0, limit);
   },
 
+  /** Awaited: this is the final write of a cron cycle, so a fire-and-forget
+   *  save would be dropped when the function freezes. */
   async setLastCronAt(iso: string) {
     await ensureReady();
     store().lastCronAt = iso;
     persist();
+    await flushSaves();
   },
 
   async lastCronAt(): Promise<string | undefined> {

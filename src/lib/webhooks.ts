@@ -20,6 +20,72 @@ export interface SettleWebhookPayload {
   agentId?: string;
 }
 
+/**
+ * Discord and Slack reject arbitrary JSON: they want their own body shape.
+ * Detecting them means a user can paste the URL their community already uses
+ * instead of standing up a receiver, which is the difference between a
+ * developer feature and something a Discord admin will actually set up.
+ */
+function chatFlavour(url: string): "discord" | "slack" | null {
+  if (/^https:\/\/(canary\.|ptb\.)?discord(app)?\.com\/api\/webhooks\//i.test(url)) {
+    return "discord";
+  }
+  if (/^https:\/\/hooks\.slack\.com\//i.test(url)) return "slack";
+  return null;
+}
+
+const VERDICT_COLOR: Record<string, number> = {
+  yes: 0x3ddc97,
+  no: 0xff5f6d,
+  uncertain: 0xffc93c,
+};
+
+function toDiscordBody(payload: SettleWebhookPayload, appUrl: string) {
+  const verdict = payload.market.verdict ?? "uncertain";
+  const conf = payload.market.confidence
+    ? `${(payload.market.confidence * 100).toFixed(0)}%`
+    : "n/a";
+  const isTest = payload.type === "webhook.test";
+
+  return {
+    username: "Xyle",
+    embeds: [
+      {
+        title: isTest ? "Test event from Xyle" : payload.market.title,
+        url: payload.market.id.startsWith("mkt_")
+          ? `${appUrl}/markets/${payload.market.id}`
+          : undefined,
+        description: isTest
+          ? "Your endpoint is wired up correctly. Real settlements look like this."
+          : `Settled **${verdict.toUpperCase()}** at ${conf} confidence.`,
+        color: VERDICT_COLOR[verdict] ?? VERDICT_COLOR.uncertain,
+        fields: [
+          { name: "Verdict", value: verdict, inline: true },
+          { name: "Confidence", value: conf, inline: true },
+        ],
+        footer: { text: "Verified answers, with receipts" },
+        timestamp: payload.at,
+      },
+    ],
+  };
+}
+
+function toSlackBody(payload: SettleWebhookPayload, appUrl: string) {
+  const verdict = payload.market.verdict ?? "uncertain";
+  const conf = payload.market.confidence
+    ? `${(payload.market.confidence * 100).toFixed(0)}%`
+    : "n/a";
+  const link = payload.market.id.startsWith("mkt_")
+    ? ` <${appUrl}/markets/${payload.market.id}|View>`
+    : "";
+  return {
+    text:
+      payload.type === "webhook.test"
+        ? "Test event from Xyle. Your endpoint works."
+        : `*${payload.market.title}* settled *${verdict.toUpperCase()}* at ${conf}.${link}`,
+  };
+}
+
 export async function deliverWebhook(
   url: string,
   payload: SettleWebhookPayload,
@@ -28,8 +94,21 @@ export async function deliverWebhook(
   const safe = validateCallbackUrl(url);
   if (!safe.ok) return { ok: false, error: safe.reason };
 
-  const body = JSON.stringify(payload);
-  const signature = signPayload(body);
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://xyle.app").replace(
+    /\/$/,
+    ""
+  );
+  const flavour = chatFlavour(safe.url);
+  const body = JSON.stringify(
+    flavour === "discord"
+      ? toDiscordBody(payload, appUrl)
+      : flavour === "slack"
+        ? toSlackBody(payload, appUrl)
+        : payload
+  );
+  // Chat platforms verify nothing, and the signature only makes sense over
+  // our own envelope, so it is attached to raw JSON deliveries only.
+  const signature = flavour ? undefined : signPayload(body);
 
   try {
     const controller = new AbortController();
@@ -38,8 +117,8 @@ export async function deliverWebhook(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "SignalArena-Webhook/1.0",
-        ...(signature ? { "X-Signal-Arena-Signature": signature } : {}),
+        "User-Agent": "Xyle-Webhook/1.0",
+        ...(signature ? { "X-Xyle-Signature": signature } : {}),
       },
       body,
       signal: controller.signal,
@@ -62,7 +141,7 @@ export function buildTestPayload(agentId?: string): SettleWebhookPayload {
     at: new Date().toISOString(),
     market: {
       id: "mkt_test",
-      title: "Test event from Signal Arena",
+      title: "Test event from Xyle",
       status: "settled_yes",
       verdict: "yes",
       confidence: 0.91,

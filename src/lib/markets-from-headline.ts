@@ -2,6 +2,7 @@ import { loadConfig } from "./config";
 import { db } from "./db";
 import { withCallContext } from "./telegraph/call-context";
 import { chatJsonObject } from "./telegraph/clients";
+import { currentYear, datePreamble } from "./prompt-context";
 import type { Market } from "./types";
 
 /** Paste a headline → open a market (user path). */
@@ -18,10 +19,16 @@ export async function createMarketFromHeadline(
     { context: "user:headline-market" },
     () =>
       chatJsonObject(
-        `Turn a headline into one yes/no prediction market.
+        `${datePreamble()}
+
+Turn a headline into one yes/no prediction market about what happens NEXT.
 Return ONLY JSON:
-{"title":"...?","description":"...","eventClass":"defi_exploit|flight_disruption|claim_contradiction|other","searchQuery":"..."}
-Title must be a clear yes/no question.`,
+{"title":"...?","description":"...","eventClass":"defi_exploit|flight_disruption|market_move|tech_outage|policy|corporate|sports|climate|other","searchQuery":"..."}
+
+Rules:
+- Title must be a clear yes/no question that is not yet decided.
+- Never reference a year earlier than ${currentYear()}; prefer "in the next 7 days".
+- Do not simply restate the headline as a question about the past.`,
         h
       )
   );

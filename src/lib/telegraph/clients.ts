@@ -353,7 +353,35 @@ function toIsoDate(raw: unknown): string | undefined {
 }
 
 /** Evidence stage. Primary news miner, alternate miner as fallback. */
-export async function searchNews(query: string): Promise<{
+/**
+ * Reduces a natural-language query to the few words a keyword API can match.
+ *
+ * Tavily handles full sentences; GNews AND-matches every term, so a seven-word
+ * query returns nothing at all. When Tavily was down, every fallback search
+ * silently produced zero articles and the market factory stopped creating
+ * markets without ever erroring.
+ */
+const STOPWORDS = new Set([
+  "the","a","an","and","or","of","in","on","for","to","this","that","with",
+  "will","be","is","are","was","were","at","by","from","as","it","its","new",
+  "next","last","week","month","year","day","days","recent","recently","any",
+  "major","big","top","best",
+]);
+
+export function toKeywords(query: string, max = 3): string {
+  const words = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+  const picked = words.slice(0, max);
+  return picked.length > 0 ? picked.join(" ") : query.slice(0, 40);
+}
+
+export async function searchNews(
+  query: string,
+  opts?: { keywords?: string }
+): Promise<{
   articles: NewsArticle[];
   proof: PaymentProof | null;
   degraded: boolean;
@@ -428,7 +456,7 @@ export async function searchNews(query: string): Promise<{
       cfg.newsMinerAltId,
       "/search",
       "GET",
-      { q: query },
+      { q: opts?.keywords || toKeywords(query) },
       "news",
       `${cfg.newsAltLabel} ${cfg.newsMinerAltId}`
     );
@@ -451,6 +479,11 @@ export async function searchNews(query: string): Promise<{
         publishedAt: toIsoDate(a.publishedAt),
       })) ?? [];
 
+    if (articles.length === 0) {
+      console.warn(
+        `[news] miner ${cfg.newsMinerAltId} returned 0 articles for "${opts?.keywords || toKeywords(query)}"`
+      );
+    }
     return { articles, proof, degraded: articles.length === 0 };
   } catch (err) {
     // Both evidence miners are down. The judges still run, but with nothing

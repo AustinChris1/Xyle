@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Signal Arena";
+export const alt = "Xyle";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -31,7 +31,7 @@ export default function Image() {
           <img src={markSrc} width={96} height={96} alt="" />
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 40, fontWeight: 600, letterSpacing: -1 }}>
-              Signal Arena
+              Xyle
             </div>
             <div
               style={{
@@ -41,7 +41,7 @@ export default function Image() {
                 textTransform: "uppercase",
               }}
             >
-              Evidence-settled markets
+              Verified answers, with receipts
             </div>
           </div>
         </div>

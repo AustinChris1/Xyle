@@ -1,6 +1,12 @@
+---
+title: Keys and payments
+summary: Wallet setup, the x402 payment flow, and which network the live node actually charges on.
+order: 4
+---
+
 # Keys and payments
 
-Signal Arena does **not** use a Telegraph API key.  
+Xyle does **not** use a Telegraph API key.  
 Live miners return **HTTP 402** and collect **USDC** via **x402**.
 
 ## Network that matters
@@ -46,4 +52,4 @@ pnpm keys:evm --write
 - Rotate keys if they appear in chat logs or screenshots.  
 - Public `POST /api/oracle/verify` spends real USDC; keep rate limits on.
 
-See [README.md](./README.md) for how to run the app, and [ARCHITECTURE.md](./ARCHITECTURE.md) for pipeline detail.
+See [Usage](./usage.md) for how to run the app, and [Architecture](./architecture.md) for pipeline detail.

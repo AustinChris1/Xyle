@@ -18,7 +18,7 @@ export function shareMarketSettled(input: {
     market.title,
     `4-miner oracle · receipts ${txs || "on ledger"}`,
     `${appUrl}/markets/${market.id}`,
-    `@Telegraphprotoc #SignalArena`,
+    `@Telegraphprotoc #Xyle`,
   ].join("\n");
 }
 
@@ -29,11 +29,11 @@ export function shareBreak(input: {
 }) {
   const { handle, attempt, appUrl } = input;
   return [
-    `@${handle} scored ${(attempt.foolScore * 100).toFixed(1)} fooling Signal Arena`,
+    `@${handle} scored ${(attempt.foolScore * 100).toFixed(1)} fooling Xyle`,
     `Verdict ${attempt.verdict} · dual-judge pipeline`,
     attempt.brokeThreshold ? "CLEARED THE BAR" : "desk held",
     `${appUrl}/challenge`,
-    `@Telegraphprotoc #SignalArena`,
+    `@Telegraphprotoc #Xyle`,
   ].join("\n");
 }
 

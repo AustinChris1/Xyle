@@ -186,6 +186,83 @@ export interface VerifyResult {
   stages?: StageSummary;
 }
 
+/**
+ * A stored verification, addressable at /c/[id].
+ *
+ * A verdict that only exists in an HTTP response cannot be cited, argued with,
+ * or linked. Persisting each one turns every call into a shareable artifact.
+ */
+export interface StoredClaim {
+  id: string;
+  at: string;
+  claim: string;
+  verdict: OracleVerdict;
+  confidence: number;
+  reasoning: string;
+  authenticity: {
+    aiLikely: boolean;
+    score: number;
+    detail: string;
+    degraded?: boolean;
+  };
+  consensus: {
+    judgeA: OracleVerdict;
+    judgeB: OracleVerdict;
+    agreed: boolean;
+  };
+  stages?: StageSummary;
+  sources: Array<{
+    title: string;
+    snippet: string;
+    url?: string;
+    publishedAt?: string;
+  }>;
+  proofs: PaymentProof[];
+  minerCalls: number;
+  costUsdc: number;
+  /** Present when a signed-in user asked for it. */
+  requestedBy?: string;
+  requestedByHandle?: string;
+}
+
+/** One probe of a single miner, for the Pulse health page. */
+export interface MinerProbe {
+  minerId: string;
+  slug: string;
+  name: string;
+  at: string;
+  ok: boolean;
+  /** True when the probe actually paid; false for the free routability check. */
+  paid: boolean;
+  latencyMs: number;
+  status?: number;
+  error?: string;
+}
+
+/** Rolling health for one miner. */
+export interface MinerHealth {
+  minerId: string;
+  slug: string;
+  name: string;
+  kind: string;
+  /** Free routability checks: does the node still dispatch to it. */
+  routableProbes: number;
+  routableOk: number;
+  routableUptime: number;
+  /** Paid probes plus real app traffic: does the upstream actually answer. */
+  liveProbes: number;
+  liveOk: number;
+  liveUptime: number;
+  p50LatencyMs: number;
+  lastOk?: string;
+  lastFail?: string;
+  lastError?: string;
+  paidCalls: number;
+  paidFailures: number;
+  /** Overall label shown on the badge and status dot. */
+  state: "healthy" | "degraded" | "down" | "unknown";
+}
+
 /** Registered automation agent owned by a SIWE user. */
 export interface Agent {
   id: string;

@@ -98,6 +98,13 @@ export function loadConfig() {
      */
     cronMaxOpenMarkets: Number(process.env.CRON_MAX_OPEN_MARKETS ?? 12) || 12,
 
+    /**
+     * Pulse deep probes per cycle. Free routability runs over the whole
+     * catalog; only this many miners get a paid liveness check, rotating, so
+     * a faucet wallet is not drained proving what a 402 already implies.
+     */
+    pulseDeepPerCycle: Number(process.env.PULSE_DEEP_PER_CYCLE ?? 3) || 3,
+
     /** Spend ceiling for the public verify endpoint, per rolling 24h. */
     verifyDailyCapUsdc:
       Number(process.env.VERIFY_DAILY_CAP_USDC ?? 2) || 2,

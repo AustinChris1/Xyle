@@ -1,5 +1,5 @@
 {
-  "name": "signal-arena",
+  "name": "xyle",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -21,6 +21,7 @@
     "@x402/svm": "^2.20.0",
     "framer-motion": "^12.43.0",
     "iron-session": "8",
+    "marked": "^18.0.9",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

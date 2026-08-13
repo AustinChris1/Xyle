@@ -5,8 +5,8 @@ import { motion } from "framer-motion";
 
 type Theme = "light" | "dark";
 
-const STORAGE_KEY = "signal-arena-theme";
-const EVENT = "signal-arena-theme-change";
+const STORAGE_KEY = "xyle-theme";
+const EVENT = "xyle-theme-change";
 
 function subscribe(onChange: () => void) {
   window.addEventListener(EVENT, onChange);

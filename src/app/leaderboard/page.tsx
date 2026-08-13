@@ -35,7 +35,7 @@ export default async function LeaderboardPage() {
         <p className="mt-2.5 max-w-2xl text-muted">
           Ranked by how often your calls turned out right, not by an invented
           balance. One forecast per wallet per market, weighted so a steady
-          record beats one lucky call. Adversary attempts count too.
+          record beats one lucky call. Break-it attempts count too.
         </p>
       </header>
 

@@ -15,6 +15,32 @@ import { WatchButton } from "./WatchButton";
 import { useAuth } from "@/hooks/useAuth";
 import { openShare, shareMarketSettled } from "@/lib/share";
 
+/**
+ * Explains what this reading did to the market.
+ *
+ * Only a YES can resolve a market early; a NO means "not yet" and leaves it
+ * open until the close date. Saying so plainly avoids the reasonable
+ * assumption that a high-confidence NO above the bar should have settled.
+ */
+function settlementNote(tick: OracleTick, market: Market): string {
+  const bar = (market.confidenceThreshold * 100).toFixed(0);
+  const closes = new Date(market.closesAt).toLocaleDateString();
+
+  if (tick.settled) return "This reading resolved the market.";
+
+  if (tick.verdict === "yes") {
+    if (!tick.consensus?.agreed) {
+      return "Judges disagreed, so this cannot resolve the market. Both must agree on YES.";
+    }
+    if (tick.confidence < market.confidenceThreshold) {
+      return `A YES needs ${bar}% confidence to resolve this market. This reading fell short.`;
+    }
+    return "Held back by the authenticity or freshness check.";
+  }
+
+  return `Not yet. Only a YES above ${bar}% resolves a market early, so a NO simply leaves it open. If it is still unconfirmed on ${closes}, it settles NO automatically.`;
+}
+
 /** Stale evidence is the main way a verdict goes wrong, so surface the age. */
 function relativeAge(iso: string) {
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
@@ -373,6 +399,7 @@ export function MarketDetailClient({
               <div className="meter mt-4">
                 <motion.div
                   className={`h-full ${
+                    latest.verdict === "yes" &&
                     latest.confidence >= market.confidenceThreshold
                       ? "bg-copper"
                       : "bg-muted"
@@ -382,8 +409,11 @@ export function MarketDetailClient({
                   transition={{ duration: 0.8, ease }}
                 />
               </div>
-              <p className="mt-1.5 font-mono text-[10px] uppercase tracking-wide text-faint">
-                Needs {(market.confidenceThreshold * 100).toFixed(0)}% to settle
+              {/* The confidence bar only gates a YES. Printing "needs 72% to
+                  settle" under a confident NO made it look like the market
+                  should have resolved and did not. */}
+              <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
+                {settlementNote(latest, market)}
               </p>
 
               <p className="mt-4 text-sm leading-relaxed text-muted">

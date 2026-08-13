@@ -81,15 +81,37 @@ export function ChallengeClient({
       animate="show"
       className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]"
     >
-      <motion.section variants={fadeUp} className="panel-hot rounded-xl p-6">
-        <p className="eyebrow">Adversary mode</p>
+      <motion.section variants={fadeUp} className="panel-hot p-6">
+        <p className="eyebrow">Red team</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Fool the oracle
+          Break the oracle
         </h1>
-        <p className="mt-2.5 leading-relaxed text-muted">
-          Write a claim convincing enough to push the oracle toward a false YES.
-          Every attempt runs the full settlement pipeline, so a high score means
-          you found a real weakness in how evidence gets judged.
+
+        {/* This page and /verify run the identical pipeline, which is exactly
+            why people read them as duplicates. State the difference up front
+            instead of hoping the name carries it. */}
+        <div className="mt-4 border border-line">
+          <div className="grid grid-cols-2 divide-x divide-line">
+            <div className="p-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
+                Verify asks
+              </p>
+              <p className="mt-1 text-sm text-ink">Is this true?</p>
+            </div>
+            <div className="p-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-signal">
+                This asks
+              </p>
+              <p className="mt-1 text-sm text-ink">Can you make it lie?</p>
+            </div>
+          </div>
+        </div>
+
+        <p className="mt-4 leading-relaxed text-muted">
+          Write a claim you know is <strong className="text-ink">false</strong>,
+          but convincing enough that four miners believe it anyway. Same pipeline
+          as Verify, opposite goal: here a confident YES means{" "}
+          <em className="text-ink not-italic">you won</em> and the oracle failed.
         </p>
 
         <label className="mt-6 block text-xs text-muted">

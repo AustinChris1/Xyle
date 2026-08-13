@@ -1,13 +1,17 @@
 import { loadConfig } from "./config";
 import { db } from "./db";
+import { flushSaves } from "./persist";
 import { withCallContext } from "./telegraph/call-context";
+import {
+  currentYear,
+  datePreamble,
+  referencesPastYear,
+} from "./prompt-context";
 import {
   TelegraphError,
   chatJsonObject,
   detectAiText,
   judgeWithFallback,
-  reasonJson,
-  reasonJsonConsensus,
   searchNews,
 } from "./telegraph/clients";
 import type {
@@ -18,7 +22,7 @@ import type {
   VerifyResult,
 } from "./types";
 
-const SYSTEM_PROMPT = `You are a settlement judge for Signal Arena on Telegraph.
+const SYSTEM_PROMPT = `You are a settlement judge for Xyle on Telegraph.
 You receive: (1) today's date, (2) a market or claim, (3) dated news results,
 (4) an authenticity score.
 Decide if the REAL-WORLD event has clearly occurred RECENTLY, based on
@@ -350,18 +354,41 @@ export async function runChallenge(
       const news = await searchNews(q || "crypto news");
       if (news.proof) proofs.push(news.proof);
 
+      // Without a stated date the judges fall back on their training cutoff
+      // and say things like "as of October 2023", which is both wrong and
+      // visible to users.
+      const dateLine = datePreamble();
+
+      const evidence = news.articles.length
+        ? news.articles
+            .map(
+              (a) =>
+                `- [${a.publishedAt ? a.publishedAt.slice(0, 10) : "undated"}] ${a.title}`
+            )
+            .join("\n")
+        : "- none retrievable";
+
+      const claimContext = `Submitted claim:\n${text}\n\nAuthenticity: synthetic=${auth.answer === 1} score=${auth.score}\nRecent related coverage:\n${evidence}`;
+
       const [resA, resB] = await Promise.allSettled([
-        reasonJson(
-          `You evaluate whether a SUBMITTED CLAIM would trick a settlement oracle into saying YES (event occurred).
+        judgeWithFallback(
+          "A",
+          `${dateLine}
+
+You evaluate whether a SUBMITTED CLAIM would trick a settlement oracle into saying YES (event occurred).
 Return ONLY JSON: {"verdict":"yes"|"no"|"uncertain","confidence":0-1,"reasoning":"..."}
 - verdict yes = you would settle the event as occurred based on this text alone
-- Prefer no if clearly fake or AI-slop`,
-          `Submitted claim:\n${text}\n\nAuthenticity: synthetic=${auth.answer === 1} score=${auth.score}\nNews: ${news.articles.map((a) => a.title).join(" | ")}`
+- Prefer no if clearly fake or AI-slop
+- Base recency judgements on the dated coverage, not on your own sense of "now"`,
+          claimContext
         ),
-        reasonJsonConsensus(
-          `Second independent judge: would this claim falsely settle YES?
+        judgeWithFallback(
+          "B",
+          `${dateLine}
+
+Second independent judge: would this claim falsely settle YES?
 Return ONLY JSON: {"verdict":"yes"|"no"|"uncertain","confidence":0-1,"reasoning":"..."}`,
-          text.slice(0, 3000)
+          claimContext
         ),
       ]);
 
@@ -437,28 +464,74 @@ Return ONLY JSON: {"verdict":"yes"|"no"|"uncertain","confidence":0-1,"reasoning"
   return attempt;
 }
 
+/**
+ * Topics the factory rotates through.
+ *
+ * A single hardcoded query produced a board where every market was about a
+ * crypto hack, because that is all the search was ever asked for. Rotating by
+ * cycle gives variety without needing anyone to curate topics by hand.
+ * Each one has to be settleable from news within days, not speculative.
+ */
+const MARKET_TOPICS: Array<{
+  eventClass: string;
+  /** Natural language, for the primary search miner. */
+  query: string;
+  /** Two or three words, for the keyword-matching fallback miner. */
+  keywords: string;
+}> = [
+  { eventClass: "defi_exploit", query: "DeFi protocol exploit hack drained funds this week", keywords: "defi exploit" },
+  { eventClass: "flight_disruption", query: "airport mass flight cancellations delays airline disruption", keywords: "flight cancellations" },
+  { eventClass: "market_move", query: "stock index record high sharp selloff central bank rate decision", keywords: "stock market" },
+  { eventClass: "tech_outage", query: "major cloud platform outage service down users affected", keywords: "outage" },
+  { eventClass: "policy", query: "regulator approves bans new rule announcement government policy", keywords: "regulation" },
+  { eventClass: "corporate", query: "company layoffs acquisition merger earnings beat miss", keywords: "layoffs acquisition" },
+  { eventClass: "sports", query: "championship final result record broken transfer confirmed", keywords: "championship" },
+  { eventClass: "climate", query: "storm evacuation wildfire flooding emergency declared", keywords: "wildfire storm" },
+];
+
 /** Auto-open markets from live news + LLM framing. */
 export async function generateMarketsFromNews(max = 2): Promise<Market[]> {
   const cfg = loadConfig();
+
+  // Rotate on the hour so consecutive cycles do not all mine the same topic.
+  const topic =
+    MARKET_TOPICS[Math.floor(Date.now() / 3_600_000) % MARKET_TOPICS.length]!;
+
   const news = await attributed("auto:market-scan", undefined, () =>
-    searchNews(
-      "crypto DeFi exploit hack OR major flight cancellation airport OR viral crypto claim denied"
-    )
+    searchNews(topic.query, { keywords: topic.keywords })
   );
 
-  if (news.articles.length === 0) return [];
+  if (news.articles.length === 0) {
+    // Silent zero-article returns are how market creation stopped for days
+    // without a single error, so say so loudly.
+    console.warn(
+      `[market factory] no articles for topic "${topic.eventClass}" (query "${topic.keywords}"); skipping this cycle`
+    );
+    return [];
+  }
 
   const existing = await db.listMarkets();
   const existingTitles = new Set(existing.map((m) => m.title.toLowerCase()));
 
   const framing = await attributed("auto:market-frame", undefined, () =>
     chatJsonObject(
-      `You create short prediction-market questions from news.
-Return ONLY JSON: {"markets":[{"title":"...?","description":"...","eventClass":"defi_exploit|flight_disruption|claim_contradiction|other","searchQuery":"..."}]}
-Max ${max} markets. Titles must be yes/no questions. Skip duplicates of: ${[...existingTitles].slice(0, 10).join(" | ")}`,
+      `${datePreamble()}
+
+You create short prediction-market questions from today's news.
+Return ONLY JSON: {"markets":[{"title":"...?","description":"...","eventClass":"${topic.eventClass}","searchQuery":"..."}]}
+
+Rules:
+- Max ${max} markets, each a yes/no question about something NOT yet decided.
+- The question must be resolvable within the next few days by news search.
+- Never reference a year earlier than ${currentYear()}. Prefer "in the next 7 days" over naming a year at all.
+- Do not restate something the articles already report as finished; ask about what happens NEXT.
+- Skip anything close to: ${[...existingTitles].slice(0, 10).join(" | ")}`,
       news.articles
         .slice(0, 5)
-        .map((a) => `${a.title}: ${a.snippet}`)
+        .map(
+          (a) =>
+            `[${a.publishedAt ? a.publishedAt.slice(0, 10) : "undated"}] ${a.title}: ${a.snippet}`
+        )
         .join("\n")
     )
   );
@@ -478,12 +551,25 @@ Max ${max} markets. Titles must be yes/no questions. Skip duplicates of: ${[...e
           !!x && typeof x === "object" && typeof (x as { title?: string }).title === "string"
       )
       .filter((x) => (x.title as string).length > 12)
+      // The prompt asks for current dates, but models drift back to their
+      // training era, so drop anything anchored on a year already gone.
+      .filter((x) => {
+        const stale =
+          referencesPastYear(x.title as string) ||
+          referencesPastYear((x.description as string) ?? "");
+        if (stale) {
+          console.warn(
+            `[market factory] dropped stale-dated proposal: ${x.title}`
+          );
+        }
+        return !stale;
+      })
       .map((x) => ({
         title: x.title as string,
         description:
           (x.description as string) ||
           "Auto-opened from live news. Settles on multi-miner consensus.",
-        eventClass: (x.eventClass as string) || "other",
+        eventClass: (x.eventClass as string) || topic.eventClass,
         searchQuery: (x.searchQuery as string) || (x.title as string),
       }));
   }
@@ -590,6 +676,9 @@ export async function runCronCycle() {
 
   const oracle = await runAllOpenOracles(cfg.cronMarketsPerCycle);
   await db.setLastCronAt(new Date().toISOString());
+  // The final write has no later await to let the queue drain, and a
+  // serverless instance can freeze the moment this returns.
+  await flushSaves();
 
   return {
     autoMarkets: autoMarkets.map((m) => m.id),

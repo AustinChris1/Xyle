@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { loadConfig } from "@/lib/config";
 import { db } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
 import { verifyClaim } from "@/lib/oracle";
 import { clientIp, takeToken } from "@/lib/rate-limit";
 import { TelegraphError } from "@/lib/telegraph/clients";
@@ -53,10 +54,35 @@ export async function POST(req: Request) {
     const body = schema.parse(await req.json());
     const result = await verifyClaim(body.claim);
 
+    // Persist so the verdict has a home. A result that only exists in an HTTP
+    // response cannot be cited, linked, or argued with later.
+    const session = await getSession();
+    const stored = await db.saveClaim({
+      claim: result.claim,
+      verdict: result.verdict,
+      confidence: result.confidence,
+      reasoning: result.reasoning,
+      authenticity: result.authenticity,
+      consensus: result.consensus,
+      stages: result.stages,
+      sources: result.sources,
+      proofs: result.proofs,
+      minerCalls: result.minerCalls,
+      costUsdc: result.costUsdcEstimate,
+      requestedBy: session.isLoggedIn ? session.address : undefined,
+      requestedByHandle: session.isLoggedIn ? session.handle : undefined,
+    });
+
+    const base = (
+      process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin
+    ).replace(/\/$/, "");
+
     return NextResponse.json({
       ok: true,
-      product: "signal-arena-oracle",
+      product: "xyle-oracle",
       version: 1,
+      id: stored.id,
+      permalink: `${base}/c/${stored.id}`,
       result,
       budget: {
         spentUsdcLast24h:

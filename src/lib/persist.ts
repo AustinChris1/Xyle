@@ -4,6 +4,8 @@ import type {
   ActivityItem,
   ChallengeAttempt,
   ConsumptionEntry,
+  MinerProbe,
+  StoredClaim,
   Market,
   OracleTick,
   Stake,
@@ -19,6 +21,10 @@ export interface PersistedStore {
   activity: ActivityItem[];
   /** SIWE profiles keyed by lowercase address. */
   users: Record<string, UserProfile>;
+  /** Verifications addressable at /c/[id]. */
+  claims: StoredClaim[];
+  /** Rolling miner probe results for Pulse. */
+  probes: MinerProbe[];
   minerRequests: number;
   totalCostUsdc: number;
   lastCronAt?: string;
@@ -35,6 +41,8 @@ const EMPTY: PersistedStore = {
   consumption: [],
   activity: [],
   users: {},
+  claims: [],
+  probes: [],
   minerRequests: 0,
   totalCostUsdc: 0,
   seeded: false,
@@ -42,7 +50,13 @@ const EMPTY: PersistedStore = {
   version: 1,
 };
 
-const KV_KEY = "signal-arena-v1";
+const KV_KEY = "xyle-v1";
+/**
+ * The row was called "signal-arena-v1" before the rename. Reading it as a
+ * fallback means the existing ledger, markets and forecasts survive; the next
+ * save writes to the new key and the old row is simply left behind.
+ */
+const LEGACY_KV_KEYS = ["signal-arena-v1"];
 const localPath = () => path.join(process.cwd(), ".data", "store.json");
 
 function hasTurso() {
@@ -71,14 +85,19 @@ export async function loadPersisted(): Promise<PersistedStore> {
   try {
     if (hasTurso()) {
       const client = await ensureTursoTable();
-      const rs = await client.execute({
-        sql: "SELECT value FROM kv WHERE key = ?",
-        args: [KV_KEY],
-      });
-      const row = rs.rows[0];
-      if (row && typeof row.value === "string") {
-        const parsed = JSON.parse(row.value) as Partial<PersistedStore>;
-        return { ...EMPTY, ...parsed, users: parsed.users || {} };
+      for (const key of [KV_KEY, ...LEGACY_KV_KEYS]) {
+        const rs = await client.execute({
+          sql: "SELECT value FROM kv WHERE key = ?",
+          args: [key],
+        });
+        const row = rs.rows[0];
+        if (row && typeof row.value === "string") {
+          if (key !== KV_KEY) {
+            console.log(`[persist] migrated store from legacy key "${key}"`);
+          }
+          const parsed = JSON.parse(row.value) as Partial<PersistedStore>;
+          return { ...EMPTY, ...parsed, users: parsed.users || {} };
+        }
       }
       return { ...EMPTY };
     }
@@ -97,6 +116,19 @@ export function queueSave(store: PersistedStore) {
   saveQueue = saveQueue
     .then(() => savePersisted(store))
     .catch((err) => console.error("[persist] save failed:", err));
+  return saveQueue;
+}
+
+/**
+ * Waits for every queued write to land.
+ *
+ * Callers normally fire `persist()` without awaiting, which is fine mid-request
+ * because a later await lets the queue drain. The last write before a handler
+ * returns has no such luxury: a serverless function can freeze immediately and
+ * drop it. That is why `lastCronAt` never persisted, even though the readings
+ * written moments earlier did.
+ */
+export function flushSaves() {
   return saveQueue;
 }
 

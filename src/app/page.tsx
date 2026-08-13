@@ -6,7 +6,7 @@ import { ScrollPipeline } from "@/components/landing/ScrollPipeline";
 import { AdversaryTeaser } from "@/components/landing/AdversaryTeaser";
 import { MinerConstellation } from "@/components/landing/MinerConstellation";
 import { Reveal } from "@/components/Reveal";
-import { SignalMark } from "@/components/brand/SignalMark";
+import { XyleMark } from "@/components/brand/XyleMark";
 import { StatusPill } from "@/components/StatusPill";
 import { ActivityFeed } from "@/components/ActivityFeed";
 
@@ -15,18 +15,21 @@ export const dynamic = "force-dynamic";
 const claims = [
   {
     tint: "var(--evidence)",
-    title: "Infrastructure, not just a demo",
-    body: "POST /api/oracle/verify is a public endpoint. Other apps can buy a four-miner verdict with receipts.",
+    href: "/verify",
+    title: "Every verdict is a link",
+    body: "Check a claim and get a permanent page with the dated sources, both judges, and on-chain receipts. Settle an argument with a URL.",
   },
   {
     tint: "var(--authenticity)",
-    title: "Four different miners",
-    body: "Evidence (Tavily 202), authenticity (DeepSeek 115), judge A (OpenRouter 110), judge B (LiteLLM 104). YES needs dual consensus.",
+    href: "/pulse",
+    title: "We map the network",
+    body: "Because we actually pay these miners, Pulse is the only live record of which ones work. Operators embed the badge; builders pick from it.",
   },
   {
     tint: "var(--judgment)",
-    title: "Demand is public",
-    body: "The consumption ledger is a scoreboard Track 1 miners can link to: every call, cost, latency, receipt.",
+    href: "/calibration",
+    title: "The oracle is graded too",
+    body: "When it says 80% confident, was it right four times in five? Its own track record, published whether or not it flatters us.",
   },
 ];
 
@@ -90,8 +93,9 @@ export default async function HomePage() {
       <section className="mt-16 grid gap-4 sm:mt-24 sm:grid-cols-3">
         {claims.map((c, i) => (
           <Reveal key={c.title} delay={i * 0.08}>
-            <div
-              className="tinted h-full rounded-2xl p-6"
+            <Link
+              href={c.href}
+              className="tinted block h-full rounded-2xl p-6 transition-transform hover:-translate-y-0.5"
               style={{ ["--tint" as string]: c.tint }}
             >
               <span
@@ -109,7 +113,7 @@ export default async function HomePage() {
               <p className="mt-2 text-sm leading-relaxed text-muted">
                 {c.body}
               </p>
-            </div>
+            </Link>
           </Reveal>
         ))}
       </section>
@@ -191,7 +195,7 @@ export default async function HomePage() {
           <div className="panel relative overflow-hidden rounded-2xl px-6 py-14 text-center sm:px-10">
             <div className="relative flex flex-col items-center">
               <span className="text-copper">
-                <SignalMark size={52} idle />
+                <XyleMark size={52} idle />
               </span>
               <h2 className="mt-6 max-w-xl text-2xl font-semibold tracking-tight sm:text-3xl">
                 Paste a headline. Let four miners argue. Settle on consensus.

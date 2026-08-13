@@ -71,7 +71,7 @@ export function validateCallbackUrl(raw: string):
 
 /**
  * Lets a receiver prove the POST came from this app.
- * Header: X-Signal-Arena-Signature: sha256=<hex of hmac over the raw body>
+ * Header: X-Xyle-Signature: sha256=<hex of hmac over the raw body>
  */
 export function signPayload(body: string): string | undefined {
   const secret =

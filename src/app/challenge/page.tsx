@@ -6,9 +6,9 @@ import { db } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Adversary",
+  title: "Break it",
   description:
-    "Write a claim convincing enough to push the settlement oracle toward a false YES. Hall of breaks is public red-team data.",
+    "Submit a claim you know is false and try to make the oracle believe it. Same pipeline as Verify, opposite goal. Hall of breaks is public red-team data.",
 };
 
 export default async function ChallengePage() {
@@ -18,8 +18,8 @@ export default async function ChallengePage() {
     <div className="space-y-10">
       <ChallengeClient initial={attempts} network={loadConfig().evmNetwork} />
       <section>
-        <p className="eyebrow">Hall of breaks</p>
-        <h2 className="mt-2 text-xl font-semibold tracking-tight">
+        <p className="section-rule">Hall of breaks</p>
+        <h2 className="mt-3 text-xl font-semibold tracking-tight">
           Claims that beat the oracle
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-muted">
@@ -27,15 +27,15 @@ export default async function ChallengePage() {
           Useful regression cases for evidence oracles beyond this hackathon.
         </p>
         {breaks.length === 0 ? (
-          <div className="panel mt-4 rounded-xl px-5 py-8 text-center text-sm text-muted">
+          <div className="panel mt-4 px-5 py-8 text-center text-sm text-muted">
             No breaks yet. That means the desk is holding.
           </div>
         ) : (
           <ul className="mt-4 space-y-2">
             {breaks.map((b) => (
-              <li key={b.id} className="panel rounded-lg px-4 py-3 text-sm">
+              <li key={b.id} className="panel px-4 py-3 text-sm">
                 <div className="flex justify-between gap-2 font-mono text-xs">
-                  <span className="text-copper-hot">
+                  <span className="text-signal">
                     {(b.foolScore * 100).toFixed(1)}
                   </span>
                   <span className="text-faint">{b.player}</span>
