@@ -153,17 +153,16 @@ export function Nav() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -4 }}
                       transition={{ duration: 0.14 }}
-                      className="absolute right-0 top-full z-50 mt-2 w-64 border border-line bg-surface"
+                      className="absolute right-0 top-full z-50 mt-2 w-64 border border-line bg-surface p-1.5"
                     >
-                      <p className="border-b border-line px-3 py-2 font-mono text-[9px] uppercase tracking-[0.2em] text-faint">
-                        {g.hint}
-                      </p>
+                      {/* No rules between items. Hover fill separates them,
+                          which is quieter than a divider per row. */}
                       {g.items.map((item) => (
                         <Link
                           key={item.href}
                           href={item.href}
                           onClick={() => setMenu(null)}
-                          className={`block border-b border-line px-3 py-2.5 last:border-b-0 transition-colors hover:bg-sunken ${
+                          className={`block px-2.5 py-2 transition-colors hover:bg-sunken ${
                             isActive(item.href) ? "text-signal" : "text-ink"
                           }`}
                         >
@@ -184,7 +183,7 @@ export function Nav() {
             <NavLink key={l.href} {...l} active={isActive(l.href)} />
           ))}
 
-          <span className="mx-2 h-4 w-px bg-line" />
+          <span className="w-3" />
           <ConnectWallet />
           <ThemeToggle />
         </nav>
@@ -271,16 +270,20 @@ export function Nav() {
                   ))}
                 </div>
 
+                {/* Groups are separated by their label alone. A rule under
+                    every row turned the drawer into a ruled notepad. */}
                 {groups.map((g) => (
-                  <div key={g.label} className="mt-5">
-                    <p className="section-rule mb-2">{g.label}</p>
+                  <div key={g.label} className="mt-6">
+                    <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">
+                      {g.label}
+                    </p>
                     <ul>
                       {g.items.map((item) => (
                         <li key={item.href}>
                           <Link
                             href={item.href}
                             onClick={() => setOpen(false)}
-                            className={`flex items-baseline justify-between gap-3 border-b border-line py-2.5 transition-colors ${
+                            className={`-mx-2 flex items-baseline justify-between gap-3 px-2 py-2.5 transition-colors ${
                               isActive(item.href)
                                 ? "text-signal"
                                 : "text-ink hover:text-signal"
@@ -297,26 +300,25 @@ export function Nav() {
                   </div>
                 ))}
 
-                <div className="mt-5">
-                  <p className="section-rule mb-2">Account</p>
-                  <Link
-                    href="/desk"
-                    onClick={() => setOpen(false)}
-                    className={`flex border-b border-line py-2.5 text-sm transition-colors ${
-                      isActive("/desk") ? "text-signal" : "text-ink hover:text-signal"
-                    }`}
-                  >
-                    Desk
-                  </Link>
-                  <Link
-                    href="/docs"
-                    onClick={() => setOpen(false)}
-                    className={`flex border-b border-line py-2.5 text-sm transition-colors ${
-                      isActive("/docs") ? "text-signal" : "text-ink hover:text-signal"
-                    }`}
-                  >
-                    Docs
-                  </Link>
+                <div className="mt-6">
+                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">
+                    Account
+                  </p>
+                  {[
+                    { href: "/desk", label: "Desk" },
+                    { href: "/docs", label: "Docs" },
+                  ].map((l) => (
+                    <Link
+                      key={l.href}
+                      href={l.href}
+                      onClick={() => setOpen(false)}
+                      className={`-mx-2 flex px-2 py-2.5 text-sm transition-colors ${
+                        isActive(l.href) ? "text-signal" : "text-ink hover:text-signal"
+                      }`}
+                    >
+                      {l.label}
+                    </Link>
+                  ))}
                   <div className="pt-4">
                     <ConnectWallet />
                   </div>

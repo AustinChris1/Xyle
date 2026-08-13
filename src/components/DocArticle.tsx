@@ -14,9 +14,12 @@ export function DocArticle({ doc, all }: { doc: Doc; all: DocMeta[] }) {
   const prev = index > 0 ? all[index - 1] : null;
   const next = index >= 0 && index < all.length - 1 ? all[index + 1] : null;
 
+  // The nav is a drawer now, so the column has to set its own measure. Capped
+  // at 3xl for a readable line length; at xl the contents rail and its gap take
+  // exactly the extra width rather than stretching the prose.
   return (
-    <div className="xl:flex xl:gap-10">
-      <article className="min-w-0 flex-1">
+    <div className="mx-auto w-full max-w-3xl xl:flex xl:max-w-5xl xl:gap-12">
+      <article className="min-w-0 xl:max-w-3xl xl:flex-1">
         {doc.summary && (
           <p className="mb-6 border-l-2 border-signal bg-sunken px-4 py-3 text-sm text-muted">
             {doc.summary}

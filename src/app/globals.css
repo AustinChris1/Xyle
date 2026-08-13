@@ -57,10 +57,6 @@
   --hot-a: rgba(242, 101, 43, 0.07);
   --hot-b: var(--surface);
 
-  --grid-line: rgba(242, 241, 238, 0.032);
-  --grid-size: 64px;
-  --grain: 0.02;
-
   --ring: rgba(255, 201, 120, 0.7);
   --track: rgba(255, 255, 255, 0.08);
 }
@@ -101,9 +97,6 @@
   --panel-shadow: none;
   --hot-a: rgba(193, 70, 20, 0.05);
   --hot-b: var(--surface);
-
-  --grid-line: rgba(19, 19, 22, 0.038);
-  --grain: 0.012;
 
   --ring: rgba(154, 90, 10, 0.6);
   --track: rgba(19, 19, 22, 0.1);
@@ -171,21 +164,8 @@
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* Engineering grid. Replaces the drifting colour blobs: it implies
-     measurement instead of atmosphere, and costs no animation. */
-  body::before {
-    content: "";
-    pointer-events: none;
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    background-image:
-      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-    background-size: var(--grid-size) var(--grid-size);
-    /* Fades out toward the bottom so long pages do not feel wallpapered. */
-    mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
-  }
+  /* The page ground is plain colour. Panels and rules carry the structure,
+     so a patterned backdrop only competed with them. */
 
   main,
   footer {

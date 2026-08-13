@@ -2,56 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { DocMeta } from "@/lib/docs";
-import { ChevronRightIcon, SidebarIcon } from "./Icon";
-
-const STORAGE_KEY = "xyle.docs.sidebar";
+import { SidebarIcon } from "./Icon";
 
 /**
- * The collapsed flag lives in localStorage, which is an external store, so it
- * is read through useSyncExternalStore rather than copied into state by an
- * effect. That keeps the server render (always expanded) from mismatching and
- * avoids the cascading render an effect-then-setState would cause.
- */
-const listeners = new Set<() => void>();
-
-function subscribeSidebar(onChange: () => void) {
-  listeners.add(onChange);
-  // `storage` only fires in other tabs, so same-tab changes are announced by
-  // writeCollapsed below.
-  window.addEventListener("storage", onChange);
-  return () => {
-    listeners.delete(onChange);
-    window.removeEventListener("storage", onChange);
-  };
-}
-
-function readCollapsed() {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeCollapsed(next: boolean) {
-  try {
-    localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-  } catch {
-    // Private mode or blocked storage. The toggle still works for this render.
-  }
-  listeners.forEach((l) => l());
-}
-
-/**
- * Docs chrome: a retractable left sidebar that persists its state, plus a
- * slide-in drawer on mobile.
+ * Docs navigation as a drawer at every breakpoint.
  *
- * The sidebar lives in the layout rather than each page so it does not
- * remount, which is what lets it keep scroll position and collapsed state
- * across navigations.
+ * It was an inline column that collapsed, which meant the control only existed
+ * at the top of the page: once you had scrolled into a long document there was
+ * no way to jump elsewhere without scrolling back. The trigger is fixed to the
+ * viewport now, so the sidebar opens and closes from anywhere on the page.
  */
 export function DocsShell({
   docs,
@@ -61,25 +23,16 @@ export function DocsShell({
   children: React.ReactNode;
 }) {
   const path = usePathname();
-  const collapsed = useSyncExternalStore(
-    subscribeSidebar,
-    readCollapsed,
-    () => false
-  );
 
   // The drawer remembers the route it opened on, so any navigation (including
   // browser back) closes it by derivation rather than by an effect.
-  const [drawerAt, setDrawerAt] = useState<string | null>(null);
-  const drawer = drawerAt !== null && drawerAt === path;
-  const setDrawer = (next: boolean) => setDrawerAt(next ? path : null);
+  const [openAt, setOpenAt] = useState<string | null>(null);
+  const open = openAt !== null && openAt === path;
 
   useEffect(() => {
-    if (!drawer) return;
-    // setDrawerAt rather than the setDrawer helper: the helper closes over
-    // `path` and so is a new function every render, which would make this
-    // effect re-subscribe on each one.
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDrawerAt(null);
+      if (e.key === "Escape") setOpenAt(null);
     };
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -88,50 +41,32 @@ export function DocsShell({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [drawer]);
+  }, [open]);
 
-  const nav = (
-    <ul>
-      {docs.map((d) => {
-        const active = path === d.href;
-        return (
-          <li key={d.slug}>
-            <Link
-              href={d.href}
-              aria-current={active ? "page" : undefined}
-              className={`block border-l-2 py-2 pl-3 pr-2 text-sm transition-colors ${
-                active
-                  ? "border-signal bg-signal/5 text-signal"
-                  : "border-transparent text-muted hover:border-line-strong hover:text-ink"
-              }`}
-            >
-              {d.title}
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
+  const current = docs.find((d) => d.href === path);
 
   return (
-    <div className="lg:flex lg:gap-10">
-      {/* Mobile: a bar that opens the drawer */}
-      <button
+    <>
+      {/* Fixed trigger. Sits in the gutter beside the centred column on wide
+          screens and tucks into the bottom-left corner on small ones. */}
+      <motion.button
         type="button"
-        onClick={() => setDrawer(true)}
-        className="mb-5 flex w-full items-center justify-between border border-line px-4 py-3 text-sm text-ink transition-colors hover:border-signal lg:hidden"
+        onClick={() => setOpenAt(path)}
+        aria-expanded={open}
+        aria-controls="docs-drawer"
+        initial={false}
+        animate={{ opacity: open ? 0 : 1, pointerEvents: open ? "none" : "auto" }}
+        transition={{ duration: 0.15 }}
+        className="fixed bottom-5 left-4 z-40 flex items-center gap-2 border border-line-strong bg-surface px-3.5 py-2.5 text-sm text-ink shadow-lg transition-colors hover:border-signal hover:text-signal sm:bottom-6 sm:left-6"
       >
-        <span className="flex items-center gap-2">
-          <SidebarIcon size={15} />
-          Documentation
+        <SidebarIcon size={15} />
+        <span className="max-w-[9rem] truncate">
+          {current?.title ?? "Documentation"}
         </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
-          {docs.find((d) => d.href === path)?.title ?? "Browse"}
-        </span>
-      </button>
+      </motion.button>
 
       <AnimatePresence>
-        {drawer && (
+        {open && (
           <>
             <motion.button
               type="button"
@@ -140,62 +75,70 @@ export function DocsShell({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setDrawer(false)}
-              className="fixed inset-0 z-50 cursor-default bg-black/60 lg:hidden"
+              onClick={() => setOpenAt(null)}
+              className="fixed inset-0 z-50 cursor-default bg-black/60"
             />
             <motion.nav
+              id="docs-drawer"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
-              transition={{ type: "tween", duration: 0.22, ease: [0.2, 0.8, 0.3, 1] }}
-              className="fixed inset-y-0 left-0 z-50 w-72 overflow-y-auto border-r border-line bg-background p-5 lg:hidden"
+              transition={{ type: "tween", duration: 0.24, ease: [0.2, 0.8, 0.3, 1] }}
+              className="fixed inset-y-0 left-0 z-50 flex w-[19rem] max-w-[85vw] flex-col border-r border-line bg-background"
             >
-              <p className="section-rule mb-3">Documentation</p>
-              {nav}
+              <div className="flex items-center justify-between border-b border-line px-5 py-4">
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-faint">
+                  Documentation
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOpenAt(null)}
+                  aria-label="Close documentation menu"
+                  className="flex h-7 w-7 items-center justify-center border border-line text-faint transition-colors hover:border-signal hover:text-signal"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M5 5l14 14M19 5L5 19"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="square"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <ul className="flex-1 overflow-y-auto p-3">
+                {docs.map((d) => {
+                  const active = path === d.href;
+                  return (
+                    <li key={d.slug}>
+                      <Link
+                        href={d.href}
+                        aria-current={active ? "page" : undefined}
+                        onClick={() => setOpenAt(null)}
+                        className={`block border-l-2 py-2.5 pl-3 pr-2 transition-colors ${
+                          active
+                            ? "border-signal bg-signal/5 text-signal"
+                            : "border-transparent text-ink hover:bg-sunken"
+                        }`}
+                      >
+                        <span className="block text-sm">{d.title}</span>
+                        {d.summary && (
+                          <span className="mt-0.5 block text-xs leading-snug text-faint">
+                            {d.summary}
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             </motion.nav>
           </>
         )}
       </AnimatePresence>
 
-      {/* Desktop sidebar */}
-      <motion.aside
-        animate={{ width: collapsed ? 44 : 224 }}
-        transition={{ type: "tween", duration: 0.2, ease: [0.2, 0.8, 0.3, 1] }}
-        className="hidden shrink-0 lg:block"
-      >
-        <div className="sticky top-24">
-          <div
-            className={`mb-3 flex items-center ${
-              collapsed ? "justify-center" : "justify-between"
-            }`}
-          >
-            {!collapsed && <span className="section-rule">Documentation</span>}
-            <button
-              type="button"
-              onClick={() => writeCollapsed(!collapsed)}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="flex h-7 w-7 shrink-0 items-center justify-center border border-line text-faint transition-colors hover:border-signal hover:text-signal"
-            >
-              <motion.span
-                animate={{ rotate: collapsed ? 0 : 180 }}
-                transition={{ duration: 0.2 }}
-                className="flex"
-              >
-                <ChevronRightIcon size={13} />
-              </motion.span>
-            </button>
-          </div>
-
-          {/* Kept mounted while collapsed so the width tween has something to
-              clip, rather than the list popping in at the end. */}
-          <div className={collapsed ? "overflow-hidden opacity-0" : "opacity-100"}>
-            {nav}
-          </div>
-        </div>
-      </motion.aside>
-
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
+      {children}
+    </>
   );
 }
