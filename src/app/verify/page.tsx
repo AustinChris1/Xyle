@@ -72,11 +72,11 @@ export default async function VerifyPage() {
           <h2 className="eyebrow">From your own code</h2>
           <div className="mt-3 overflow-x-auto">
             <pre className="font-mono text-[11px] leading-relaxed text-muted">
-{`curl -X POST https://your-app/api/oracle/verify \\
+{`curl -X POST https://usexyle.vercel.app/api/oracle/verify \\
   -H "content-type: application/json" \\
   -d '{"claim":"..."}'
 
-# → { "id": "c_...", "permalink": "https://your-app/c/c_...", "result": {...} }`}
+# → { "id": "c_...", "permalink": "https://usexyle.vercel.app/c/c_...", "result": {...} }`}
             </pre>
           </div>
         </section>

@@ -33,7 +33,7 @@ function escapeXml(s: string) {
  * own README. That is the distribution mechanism: they advertise Xyle because
  * it advertises them.
  *
- * Usage: ![status](https://your-app/badge/202.svg)
+ * Usage: ![status](https://usexyle.vercel.app/badge/202.svg)
  */
 export async function GET(
   _req: Request,

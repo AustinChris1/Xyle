@@ -456,7 +456,7 @@ Return ONLY JSON: {"verdict":"yes"|"no"|"uncertain","confidence":0-1,"reasoning"
     kind: brokeThreshold ? "break" : "challenge",
     title: brokeThreshold
       ? `Oracle break by ${attempt.player}`
-      : `Adversary attempt by ${attempt.player}`,
+      : `Break-it attempt by ${attempt.player}`,
     detail: `score ${(foolScore * 100).toFixed(1)} · ${verdict}`,
     href: "/challenge",
   });

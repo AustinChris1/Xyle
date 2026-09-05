@@ -280,19 +280,20 @@ export function Nav() {
                     <ul>
                       {g.items.map((item) => (
                         <li key={item.href}>
+                          {/* Label only. The hints were pushed to the opposite
+                              edge by justify-between, so no two rows started or
+                              ended in the same place. They stay on the desktop
+                              dropdown, where there is room for them. */}
                           <Link
                             href={item.href}
                             onClick={() => setOpen(false)}
-                            className={`-mx-2 flex items-baseline justify-between gap-3 px-2 py-2.5 transition-colors ${
+                            className={`-mx-2 block px-2 py-2.5 text-sm transition-colors ${
                               isActive(item.href)
                                 ? "text-signal"
                                 : "text-ink hover:text-signal"
                             }`}
                           >
-                            <span className="text-sm">{item.label}</span>
-                            <span className="text-right text-xs text-faint">
-                              {item.hint}
-                            </span>
+                            {item.label}
                           </Link>
                         </li>
                       ))}

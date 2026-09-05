@@ -94,7 +94,7 @@ export async function deliverWebhook(
   const safe = validateCallbackUrl(url);
   if (!safe.ok) return { ok: false, error: safe.reason };
 
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://xyle.app").replace(
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://usexyle.vercel.app").replace(
     /\/$/,
     ""
   );

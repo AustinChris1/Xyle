@@ -87,7 +87,7 @@ but never paid-tested — we will not claim it works).
 README:
 
 ```markdown
-![Telegraph miner 202](https://xyle.app/badge/202.svg)
+![Telegraph miner 202](https://usexyle.vercel.app/badge/202.svg)
 ```
 
 It updates itself. Machine-readable feed at `GET /api/pulse`.
@@ -192,7 +192,7 @@ format, so you can paste the webhook your community already uses.
 ## `/leaderboard`
 
 Ranked by how often your calls were right, not by an invented balance. Weighted
-so a steady 18-for-20 beats a lucky 1-for-1. Adversary attempts count too.
+so a steady 18-for-20 beats a lucky 1-for-1. Break-it attempts count too.
 
 ---
 
@@ -201,7 +201,7 @@ so a steady 18-for-20 beats a lucky 1-for-1. Adversary attempts count too.
 ### HTTP
 
 ```bash
-curl -X POST https://xyle.app/api/oracle/verify \
+curl -X POST https://usexyle.vercel.app/api/oracle/verify \
   -H "content-type: application/json" \
   -d '{"claim":"..."}'
 ```
@@ -214,7 +214,7 @@ Point any MCP client at the server so your agent can check a claim before acting
 on it:
 
 ```json
-{ "mcpServers": { "xyle": { "url": "https://xyle.app/api/mcp" } } }
+{ "mcpServers": { "xyle": { "url": "https://usexyle.vercel.app/api/mcp" } } }
 ```
 
 Tools: `verify_claim`, `get_miner_health`, `get_claim`.

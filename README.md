@@ -61,13 +61,13 @@ while its upstream Gemini quota was exhausted, and miner 202 currently reads
 Miner operators can embed their own badge:
 
 ```markdown
-![Telegraph miner 202](https://your-app/badge/202.svg)
+![Telegraph miner 202](https://usexyle.vercel.app/badge/202.svg)
 ```
 
 ### MCP
 
 ```json
-{ "mcpServers": { "xyle": { "url": "https://your-app/api/mcp" } } }
+{ "mcpServers": { "xyle": { "url": "https://usexyle.vercel.app/api/mcp" } } }
 ```
 
 Tools: `verify_claim`, `get_miner_health`, `get_claim`. The instruction given to
@@ -126,7 +126,7 @@ Claim or market question
 
 Real USDC is spent on the **miner readings**, not on the demo conviction pot. Open **`/ledger`** to see spend and receipts.
 
-### 2. Adversary (`/challenge`)
+### 2. Break it (`/challenge`)
 
 1. Write a claim (at least **80 characters**).
 2. Submit. The same four-stage pipeline scores how close you got to a false YES.
@@ -380,9 +380,9 @@ the app keeps working while nobody is watching.
 1. Deploy, then set `CRON_SECRET` in Vercel project settings and redeploy so
    the value is live.
 2. Confirm it responds:
-   `curl "https://your-app.vercel.app/api/cron/oracle?secret=YOUR_SECRET"`
+   `curl "https://usexyle.vercel.app/api/cron/oracle?secret=YOUR_SECRET"`
 3. Sign up free at [cron-job.org](https://cron-job.org) and create a job:
-   - URL: `https://your-app.vercel.app/api/cron/oracle?secret=YOUR_SECRET`
+   - URL: `https://usexyle.vercel.app/api/cron/oracle?secret=YOUR_SECRET`
    - Schedule: every 15 minutes
    - Method: GET (the default 30s timeout is fine, the route answers in ms)
    - Optional: put the secret in an `Authorization: Bearer <secret>` header
@@ -463,7 +463,7 @@ Optional but recommended for Vercel:
 ```env
 TURSO_DATABASE_URL=libsql://...
 TURSO_AUTH_TOKEN=...
-NEXT_PUBLIC_APP_URL=https://your-deploy.vercel.app
+NEXT_PUBLIC_APP_URL=https://usexyle.vercel.app
 ```
 
 Without Turso, data is stored under `.data/store.json` (fine locally; wiped on serverless cold starts without Turso).
@@ -494,7 +494,7 @@ Open [http://localhost:3000](http://localhost:3000).
 3. Record conviction YES/NO.  
 4. Run a reading (or wait for cron).  
 5. Open **Ledger** and confirm four rows with miner ids and receipts.  
-6. Try **Adversary** with ≥80 characters.  
+6. Try **Break it** with ≥80 characters.  
 7. Hit `GET /api/oracle/verify` for API docs.
 
 ### Simulation mode (no wallet)
@@ -524,7 +524,7 @@ Set the same env vars in the Vercel project. Add Turso for durable state. Arm cr
 | `/` | Product story, live activity tape |
 | `/markets` | Board + “paste a headline” |
 | `/markets/[id]` | Conviction, manual reading, proofs |
-| `/challenge` | Adversary + hall of breaks |
+| `/challenge` | Break it + hall of breaks |
 | `/ledger` | Public miner demand scoreboard |
 | `/desk` | SIWE profile, watchlist, agents, alerts |
 | `/leaderboard` | Scores |
@@ -539,7 +539,7 @@ Set the same env vars in the Vercel project. Add Turso for durable state. Arm cr
 | `GET` | `/api/activity` | Live tape JSON |
 | `POST` | `/api/markets/from-headline` | Headline → market |
 | `POST` | `/api/markets/[id]/oracle` | Manual reading |
-| `POST` | `/api/challenge` | Adversary attempt |
+| `POST` | `/api/challenge` | Break-it attempt |
 | `GET` | `/api/cron/oracle` | Auto markets + tick all open |
 | `GET` | `/api/stats` | Public status feed for the ribbon |
 | `GET` | `/api/leaderboard` | Standings JSON |

@@ -37,7 +37,7 @@ He also cannot do it at 3am, which is when exploits happen.
 He wires his payout contract to Xyle:
 
 ```bash
-curl -X POST https://xyle.app/api/oracle/verify \
+curl -X POST https://usexyle.vercel.app/api/oracle/verify \
   -H "content-type: application/json" \
   -d '{"claim":"The Ostium protocol was exploited for more than $10 million in the past week"}'
 ```
@@ -48,7 +48,7 @@ Forty seconds and about four cents later:
 {
   "verdict": "yes",
   "confidence": 0.88,
-  "permalink": "https://xyle.app/c/c_8fk2n1",
+  "permalink": "https://usexyle.vercel.app/c/c_8fk2n1",
   "sources": [
     { "title": "Ostium Confirms $23.75M Hack...", "publishedAt": "2026-07-30" }
   ]

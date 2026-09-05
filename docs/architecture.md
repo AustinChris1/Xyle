@@ -18,11 +18,11 @@ Xyle is three surfaces on one oracle core:
 |---------|------|
 | **Oracle core** | Fuse four miners into a receipted verdict |
 | **Markets** | Demo of threshold settlement + conviction |
-| **Adversary** | Competitive red-team loop that spends the same core |
+| **Break it** | Competitive red-team loop that spends the same core |
 
 The submission pitch is infrastructure-first:
 
-> `POST /api/oracle/verify` is a paid, multi-miner verify endpoint. Markets and Adversary prove it in a human UI. `/ledger` proves demand for Track 1.
+> `POST /api/oracle/verify` is a paid, multi-miner verify endpoint. Markets and Break it prove it in a human UI. `/ledger` proves demand for Track 1.
 
 ---
 
@@ -103,7 +103,7 @@ Degraded readings always report:
 "stages": { "total": 4, "completed": N, "degraded": ["authenticity", ...] }
 ```
 
-### 3.3 Adversary scoring
+### 3.3 Break-it scoring
 
 Same four-stage stack (with degradation).  
 **Fool score** rises when judges lean YES and confidence is high.  
