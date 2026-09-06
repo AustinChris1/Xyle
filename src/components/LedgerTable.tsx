@@ -17,6 +17,13 @@ const PAGE_SIZE = 25;
  * volume grows. Filtering runs client-side over the payload the page already
  * fetched; at a few hundred rows that beats a round trip per keystroke.
  */
+type Origin = "all" | "organic" | "automated";
+
+/** Contexts are tagged `user:*` when a person triggered the call. */
+function isOrganic(context: string) {
+  return context.startsWith("user:");
+}
+
 export function LedgerTable({
   entries,
   network,
@@ -27,7 +34,21 @@ export function LedgerTable({
   const [query, setQuery] = useState("");
   const [miner, setMiner] = useState("all");
   const [outcome, setOutcome] = useState<Outcome>("all");
+  const [origin, setOrigin] = useState<Origin>("all");
   const [page, setPage] = useState(0);
+
+  /**
+   * Organic means a person asked for it. Automated means the scheduler did.
+   *
+   * Telegraph judge demand on organic requests only, so a total that quietly
+   * mixes the two overstates the case. Splitting it is both the honest
+   * presentation and the one that survives scrutiny.
+   */
+  const counts = useMemo(() => {
+    let organic = 0;
+    for (const e of entries) if (isOrganic(e.context)) organic += 1;
+    return { organic, automated: entries.length - organic };
+  }, [entries]);
 
   // Miner options carry their own call counts, which doubles as a
   // reliability summary without another table.
@@ -51,6 +72,8 @@ export function LedgerTable({
       if (miner !== "all" && e.minerId !== miner) return false;
       if (outcome === "ok" && !e.success) return false;
       if (outcome === "failed" && e.success) return false;
+      if (origin === "organic" && !isOrganic(e.context)) return false;
+      if (origin === "automated" && isOrganic(e.context)) return false;
       if (!q) return true;
       return (
         e.minerId.toLowerCase().includes(q) ||
@@ -60,7 +83,7 @@ export function LedgerTable({
         (e.txHash?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [entries, query, miner, outcome]);
+  }, [entries, query, miner, outcome, origin]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -145,6 +168,33 @@ export function LedgerTable({
       </div>
 
       <p className="font-mono text-[11px] text-faint">
+        <span className="mr-3">
+          <button
+            type="button"
+            onClick={() => {
+              setOrigin(origin === "organic" ? "all" : "organic");
+              setPage(0);
+            }}
+            className={`transition-colors hover:text-signal ${
+              origin === "organic" ? "text-signal" : ""
+            }`}
+          >
+            {counts.organic} organic
+          </button>
+          <span className="text-faint"> / </span>
+          <button
+            type="button"
+            onClick={() => {
+              setOrigin(origin === "automated" ? "all" : "automated");
+              setPage(0);
+            }}
+            className={`transition-colors hover:text-signal ${
+              origin === "automated" ? "text-signal" : ""
+            }`}
+          >
+            {counts.automated} automated
+          </button>
+        </span>
         {filtered.length} of {entries.length} calls
         {" · "}
         <span className="text-copper">${shownCost.toFixed(2)} USDC</span>

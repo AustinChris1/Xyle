@@ -28,7 +28,8 @@ Return ONLY JSON:
 Rules:
 - Title must be a clear yes/no question that is not yet decided.
 - Never reference a year earlier than ${currentYear()}; prefer "in the next 7 days".
-- Do not simply restate the headline as a question about the past.`,
+- Do not simply restate the headline as a question about the past.
+- Keep "description" under 25 words. The whole JSON must fit in 160 tokens.`,
         h
       )
   );

@@ -153,11 +153,27 @@ export async function runPulseCycle(): Promise<{
     return { routable: 0, routableTotal: 0, deepProbed: [], costUsdc: 0 };
   }
 
-  // Free pass over the whole catalog, batched so we do not hammer the node.
+  /**
+   * A rotating window, not the whole catalog.
+   *
+   * This used to sweep all 130 integrations every cycle. Free per request, but
+   * on an hourly schedule that is over three thousand automated calls a day to
+   * a shared node, and the Telegraph team asked participants to stop exactly
+   * this. Rotating keeps every miner covered within a few cycles at a small
+   * fraction of the traffic.
+   */
+  const perSweep = Math.max(1, cfg.pulseRoutablePerCycle);
+  const rOffset =
+    (Math.floor(Date.now() / 3_600_000) * perSweep) % Math.max(1, routeTargets.length);
+  const sweep = Array.from(
+    { length: Math.min(perSweep, routeTargets.length) },
+    (_, i) => routeTargets[(rOffset + i) % routeTargets.length]!
+  );
+
   const routableProbes: MinerProbe[] = [];
-  const BATCH = 8;
-  for (let i = 0; i < routeTargets.length; i += BATCH) {
-    const slice = routeTargets.slice(i, i + BATCH);
+  const BATCH = 4;
+  for (let i = 0; i < sweep.length; i += BATCH) {
+    const slice = sweep.slice(i, i + BATCH);
     routableProbes.push(...(await Promise.all(slice.map(probeRoutable))));
   }
 

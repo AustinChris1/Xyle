@@ -128,9 +128,21 @@ async function minerRequest(
       });
 
       if (res.status === 402) {
+        // A 402 here is the response to a request that already carried
+        // payment, so the wallet is not the suspect: the settlement side
+        // declined or could not verify it.
+        //
+        // The upstream body is echoed because the alternative is reading
+        // Vercel logs mid-incident. When every miner started returning 402 at
+        // once with a funded wallet, the only thing that could tell us whether
+        // the facilitator, the asset or the signature was at fault was this
+        // string, and it was invisible from the browser.
+        const upstream = text.trim().slice(0, 300);
         throw new TelegraphError(
-          "The settlement wallet could not pay for this reading. Try again shortly.",
-          "PAYMENT_REQUIRED",
+          `Miner ${minerId} did not accept payment.${
+            upstream ? ` Upstream said: ${upstream}` : " Upstream sent no detail."
+          }`,
+          "PAYMENT_REJECTED",
           402,
           stage
         );
@@ -144,7 +156,9 @@ async function minerRequest(
         );
       }
       throw new TelegraphError(
-        "A settlement stage returned an error. Try the reading again.",
+        `Miner ${minerId} returned ${res.status}.${
+          text.trim() ? ` Upstream said: ${text.trim().slice(0, 300)}` : ""
+        }`,
         "STAGE_ERROR",
         res.status,
         stage
@@ -646,6 +660,14 @@ export async function chatJsonObject(
       label: cfg.consensusLabel,
       path: cfg.consensusPath,
     },
+    // The authenticity miner is a chat miner too, and a fourth shot costs
+    // nothing when the first three fail without settling.
+    {
+      minerId: cfg.authMinerId,
+      model: cfg.authModel,
+      label: cfg.authLabel,
+      path: cfg.authPath,
+    },
   ];
 
   let lastErr: unknown;
@@ -661,7 +683,13 @@ export async function chatJsonObject(
             { role: "system", content: system },
             { role: "user", content: user },
           ],
-          max_tokens: 500,
+          // Miners quote the payment against max_tokens, so an oversized
+          // ceiling is not free: miner 110 answered "you requested up to 500
+          // tokens, but can only afford 116", and 117 and 104 refused the
+          // same request with a bare 402 and no explanation. The Pulse probe
+          // pays fine against those same miners asking for 8. The JSON this
+          // returns is four short fields, so 500 was never needed.
+          max_tokens: 160,
           temperature: 0.2,
         },
         "reason",

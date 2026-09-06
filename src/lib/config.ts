@@ -103,7 +103,14 @@ export function loadConfig() {
      * catalog; only this many miners get a paid liveness check, rotating, so
      * a faucet wallet is not drained proving what a 402 already implies.
      */
-    pulseDeepPerCycle: Number(process.env.PULSE_DEEP_PER_CYCLE ?? 3) || 3,
+    pulseDeepPerCycle: Number(process.env.PULSE_DEEP_PER_CYCLE ?? 2) || 2,
+    /**
+     * Routability probes per cycle. Was an unbounded sweep of the whole
+     * catalog; capped after the Telegraph team asked participants to stop
+     * automating high-volume calls against the shared node.
+     */
+    pulseRoutablePerCycle:
+      Number(process.env.PULSE_ROUTABLE_PER_CYCLE ?? 12) || 12,
 
     /** Spend ceiling for the public verify endpoint, per rolling 24h. */
     verifyDailyCapUsdc:
