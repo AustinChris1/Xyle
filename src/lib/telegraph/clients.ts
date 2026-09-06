@@ -620,24 +620,63 @@ export async function chatJsonObject(
       proof: mockProof("reason", "Simulated factory", cfg.reasonMinerId),
     };
   }
-  const { data, proof } = await minerRequest(
-    cfg.reasonMinerId,
-    cfg.reasonPath,
-    "POST",
+  /**
+   * Tried in order. The judges have had a backup seat for a while, but this
+   * path did not, so a single dead miner returned 502 on every attempt to open
+   * a market. Miner 110 was routable 100% while failing 226 of 226 paid calls,
+   * which is exactly the failure Pulse exists to surface and exactly the one
+   * this loop now survives.
+   */
+  const attempts = [
     {
+      minerId: cfg.reasonMinerId,
       model: cfg.reasonModel,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      max_tokens: 500,
-      temperature: 0.2,
+      label: cfg.reasonLabel,
+      path: cfg.reasonPath,
     },
-    "reason",
-    `${cfg.reasonLabel} ${cfg.reasonMinerId} market factory`
-  );
-  const cleaned = extractChatContent(data);
-  return { data: parseJsonLoose(cleaned), proof };
+    {
+      minerId: cfg.reasonFallbackMinerId,
+      model: cfg.reasonFallbackModel,
+      label: cfg.reasonFallbackLabel,
+      path: cfg.reasonPath,
+    },
+    {
+      minerId: cfg.consensusMinerId,
+      model: cfg.consensusModel,
+      label: cfg.consensusLabel,
+      path: cfg.consensusPath,
+    },
+  ];
+
+  let lastErr: unknown;
+  for (const a of attempts) {
+    try {
+      const { data, proof } = await minerRequest(
+        a.minerId,
+        a.path,
+        "POST",
+        {
+          model: a.model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          max_tokens: 500,
+          temperature: 0.2,
+        },
+        "reason",
+        `${a.label} ${a.minerId} market factory`
+      );
+      return { data: parseJsonLoose(extractChatContent(data)), proof };
+    } catch (err) {
+      lastErr = err;
+      console.warn(
+        `[market factory] miner ${a.minerId} failed:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+  throw lastErr;
 }
 
 function extractChatContent(data: unknown): string {
