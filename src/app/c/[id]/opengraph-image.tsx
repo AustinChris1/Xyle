@@ -15,8 +15,16 @@ const TONE: Record<string, { word: string; color: string }> = {
  * The share card carries the verdict, because a link pasted into an argument
  * has to say something before anyone clicks it.
  */
-export default async function Image({ params }: { params: { id: string } }) {
-  const claim = await db.getClaim(params.id);
+export default async function Image({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  // params is a Promise in this version. Treating it as a plain object left
+  // `id` undefined, so every shared link previewed as "Claim not found" even
+  // though the page itself resolved fine.
+  const { id } = await params;
+  const claim = await db.getClaim(id);
   const tone = TONE[claim?.verdict ?? "uncertain"] ?? TONE.uncertain;
   const text = claim?.claim ?? "Claim not found";
 

@@ -56,8 +56,7 @@ export default function Image() {
             maxWidth: 940,
           }}
         >
-          Markets that settle when the evidence checks out, not when a moderator
-          clicks resolve.
+          Answers you can check, not answers you trust.
         </div>
 
         <div
